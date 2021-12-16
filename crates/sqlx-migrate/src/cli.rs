@@ -159,12 +159,12 @@ impl FromStr for DatabaseType {
 
 /// Run a CLI application that provides operations with the
 /// given migrations.
-/// 
+///
 /// When compiled with `debug_assertions`, it additionally allows modifying migrations
 /// at the given `migrations_path`.
-/// 
+///
 /// Although not required, `migrations` are expected to be originated from `migrations_path`.
-/// 
+///
 /// # Panics
 ///
 /// This functon assumes that it has control over the entire application.
@@ -591,11 +591,16 @@ where
     DB: Database,
     DB::Connection: db::Migrations,
 {
-    let db_url = if let Ok(url) = std::env::var("DATABASE_URL") {
-        url
-    } else {
-        tracing::error!("`DATABASE_URL` environment variable is required");
-        process::exit(1);
+    let db_url = match &migrate.database_url {
+        Some(s) => s.clone(),
+        None => {
+            if let Ok(url) = std::env::var("DATABASE_URL") {
+                url
+            } else {
+                tracing::error!("`DATABASE_URL` environment variable is required");
+                process::exit(1);
+            }
+        }
     };
 
     match Migrator::connect(&db_url).await {
