@@ -1,6 +1,6 @@
 [package]
 name = "sqlx-migrate"
-version = "0.2.0"
+version = "0.2.1"
 edition = "2021"
 description = "A database migration micro-framework based on SQLx"
 repository = "https://github.com/tamasfe/sqlx-migrate"
@@ -8,7 +8,7 @@ authors = ["tamasfe"]
 homepage = "https://github.com/tamasfe/sqlx-migrate"
 license = "MIT"
 keywords = ["sqlx", "database", "migration"]
-categories = ["database-interfaces", "development-tools"]
+categories = ["database", "development-tools"]
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
