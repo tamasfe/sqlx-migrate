@@ -8,7 +8,7 @@ An opinionated database migration micro-framework library built on top of [SQLx]
 
 - [SQLx Migrate](#sqlx-migrate)
   - [Features](#features)
-  - [Non-gials](#non-goals)
+  - [Non-goals](#non-goals)
   - [Usage](#usage)
   - [Feature Flags](#feature-flags)
   - [TODO](#todo)
