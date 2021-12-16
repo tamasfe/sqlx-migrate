@@ -1,0 +1,73 @@
+[package]
+name = "sqlx-migrate"
+version = "0.1.0"
+edition = "2021"
+description = "A database migration micro-framework based on SQLx"
+repository = "https://github.com/tamasfe/sqlx-migrate"
+authors = ["tamasfe"]
+homepage = "https://github.com/tamasfe/sqlx-migrate"
+license = "MIT"
+keywords = ["sqlx", "database", "migration"]
+categories = ["Database interfaces", "Development tools"]
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+anyhow = "1.0.51"
+async-trait = "0.1.52"
+crc = "2.1.0"
+futures-core = "0.3.18"
+humantime = "2.1.0"
+sqlx = { version = "0.5.9" }
+thiserror = "1.0.30"
+tracing = "0.1.29"
+itertools = "0.10.3"
+
+# Source generation dependencies
+proc-macro2 = { version = "1.0.34", optional = true }
+quote = { version = "1.0.10", optional = true }
+sha2 = { version = "0.10.0", optional = true }
+syn = { version = "1.0.82", optional = true }
+walkdir = { version = "*", optional = true }
+
+# CLI dependencies
+clap = { version = "3.0.0-rc.4", features = ["derive"], optional = true }
+tracing-subscriber = { version = "0.3.3", features = [
+    "env-filter",
+], optional = true }
+atty = { version = "0.2.14", optional = true }
+tokio = { version = "1.14.0", features = ["rt"], optional = true }
+comfy-table = { version = "5.0.0", optional = true }
+time = { version = "0.3.5", optional = true, features = ["formatting"] }
+regex = { version = "1.5.4", optional = true }
+filetime = { version = "0.2.15", optional = true }
+
+[dev-dependencies]
+tokio = { version = "1.14.0", features = ["rt-multi-thread", "macros"] }
+sqlx = { version = "0.5.9", features = ["runtime-tokio-rustls"] }
+
+[features]
+default = []
+generate = [
+    "proc-macro2",
+    "quote",
+    "sha2",
+    "syn",
+    "walkdir",
+]
+cli = [
+    "time",
+    "clap",
+    "tracing-subscriber",
+    "atty",
+    "tokio",
+    "comfy-table",
+    "sqlx/runtime-tokio-rustls",
+    "regex",
+    "filetime",
+]
+
+postgres = ["sqlx/postgres"]
+
+[package.metadata.docs.rs]
+all-features = true
