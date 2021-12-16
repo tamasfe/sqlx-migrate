@@ -4,7 +4,7 @@
 
 An opinionated database migration micro-framework library built on top of [SQLx](https://github.com/launchbadge/sqlx).
 
-**Experimental**, use at your own risk!
+**Everything is experimental**, breaking changes can happen and the long-term purpose of this library is not yet clear, **use at your own risk**!
 
 - [SQLx Migrate](#sqlx-migrate)
   - [Features](#features)
@@ -29,7 +29,7 @@ An opinionated database migration micro-framework library built on top of [SQLx]
 ## **Not** Features
 
 - Pre-compiled CLI for running arbitrary SQL scripts
-- Database administration (not even creating databases)
+- In-depth database administration
 - Generated undo/rollback migrations
 - Support for anything other than SQLx
 
@@ -78,7 +78,7 @@ I could've simply written functions that ran some queries against the database, 
 
 ## The How
 
-The basic idea was to do all database operations via SQLx and define an interface for migrations that are pretty much functions that operate on given SQLx transactions.
+The basic idea was to do all database operations via SQLx and define an interface for migrations that are pretty much just functions that operate on given SQLx transactions.
 
 Then provide some way, a `Migrator` that does the bookeeping and all operations with the migrations in the database.
 
