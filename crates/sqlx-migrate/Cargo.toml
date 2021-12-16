@@ -1,6 +1,6 @@
 [package]
 name = "sqlx-migrate"
-version = "0.1.1"
+version = "0.1.2"
 edition = "2021"
 description = "A database migration micro-framework based on SQLx"
 repository = "https://github.com/tamasfe/sqlx-migrate"
