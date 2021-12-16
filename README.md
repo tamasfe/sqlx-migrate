@@ -26,9 +26,9 @@ An opinionated database migration micro-framework library built on top of [SQLx]
 - Embedded SQL scripts
 - CLI bookkeeping application distributed as a library
 
-## **Not** Features
+## Non-goals
 
-- Pre-compiled CLI for running arbitrary SQL scripts
+- Pre-compiled CLI for running arbitrary SQL scripts (this feature can be potentially added in the future)
 - In-depth database administration
 - Generated undo/rollback migrations
 - Support for anything other than SQLx
