@@ -1,9 +1,9 @@
 //! # SQLx Migrate
-//! 
+//!
 //! An opinionated migration micro-framework that uses [SQLx](https://github.com/launchbadge/sqlx).
-//! 
-//! All migrations are written in Rust, and it is designed to embedded in existing applications.
-//! 
+//!
+//! All migrations are written in Rust, and are designed to embedded in existing applications.
+//!
 
 #![deny(unsafe_code)]
 #![warn(clippy::pedantic)]
@@ -117,6 +117,17 @@ impl<DB: Database> Migration<DB> {
         self
     }
 
+    /// Same as [`Migration::reversible`]
+    pub fn revertible(
+        self,
+        down: impl for<'future> Fn(
+                &'future mut Transaction<DB>,
+            ) -> LocalBoxFuture<'future, Result<(), MigrationError>>
+            + 'static,
+    ) -> Self {
+        self.reversible(down)
+    }
+
     /// Set a checksum for the migration.
     ///
     /// A checksum is only useful for migrations that come from external sources.
@@ -140,6 +151,12 @@ impl<DB: Database> Migration<DB> {
     /// Whether the migration is reversible or not.
     #[must_use]
     pub fn is_reversible(&self) -> bool {
+        self.down.is_some()
+    }
+
+    /// Whether the migration is reversible or not.
+    #[must_use]
+    pub fn is_revertible(&self) -> bool {
         self.down.is_some()
     }
 }
@@ -225,12 +242,12 @@ where
     }
 
     /// Connect to a database given in the URL.
-    /// 
+    ///
     /// If this method is used, `SQLx` statement logging is explicitly disabled.
     /// To customize the connection, use [`Migrator::connect_with`].
-    /// 
+    ///
     /// # Errors
-    /// 
+    ///
     /// An error is returned on connection failure.
     pub async fn connect(url: &str) -> Result<Self, sqlx::Error> {
         let mut opts: <<DB as Database>::Connection as Connection>::Options = url.parse()?;
@@ -245,9 +262,9 @@ where
     }
 
     /// Connect to a database with the given connection options.
-    /// 
+    ///
     /// # Errors
-    /// 
+    ///
     /// An error is returned on connection failure.
     pub async fn connect_with(
         options: &<DB::Connection as Connection>::Options,
@@ -261,11 +278,11 @@ where
     }
 
     /// Use a connection from an existing connection pool.
-    /// 
+    ///
     /// **note**: A connection will be detached from the pool.
-    /// 
+    ///
     /// # Errors
-    /// 
+    ///
     /// An error is returned on connection failure.
     pub async fn connect_with_pool(pool: &Pool<DB>) -> Result<Self, sqlx::Error> {
         let conn = pool.acquire().await?;
@@ -296,8 +313,8 @@ where
     }
 
     /// List all local migrations.
-    /// 
-    /// To list all migrations, use [`Self::status`].
+    ///
+    /// To list all migrations, use [`Migrator::status`].
     pub fn local_migrations(&self) -> &[Migration<DB>] {
         &self.migrations
     }
@@ -309,12 +326,12 @@ where
     DB::Connection: db::Migrations,
 {
     /// Apply all migrations to the given version.
-    /// 
+    ///
     /// Migration versions start at 1 and migrations are ordered
     /// the way they were added to the migrator.
-    /// 
+    ///
     /// # Errors
-    /// 
+    ///
     /// Whenever a migration fails, and error is returned and no database
     /// changes will be made.
     pub async fn migrate(&mut self, version: u64) -> Result<MigrationSummary, Error> {
@@ -390,10 +407,10 @@ where
     }
 
     /// Apply all local migrations, if there are any.
-    /// 
+    ///
     /// # Errors
-    /// 
-    /// Uses [`Self::migrate`] internally, errors are propagated.
+    ///
+    /// Uses [`Migrator::migrate`] internally, errors are propagated.
     pub async fn migrate_all(&mut self) -> Result<MigrationSummary, Error> {
         self.check_migrations().await?;
 
@@ -408,11 +425,11 @@ where
     }
 
     /// Revert all migrations after and including the given version.
-    /// 
+    ///
     /// Any migrations that are "not reversible" and have no revert functions will be ignored.
-    /// 
+    ///
     /// # Errors
-    /// 
+    ///
     /// Whenever a migration fails, and error is returned and no database
     /// changes will be made.    
     pub async fn revert(&mut self, version: u64) -> Result<MigrationSummary, Error> {
@@ -492,10 +509,10 @@ where
     }
 
     /// Revert all applied migrations, if any.
-    /// 
+    ///
     /// # Errors
-    /// 
-    /// Uses [`Self::revert`], any errors will be propagated.
+    ///
+    /// Uses [`Migrator::revert`], any errors will be propagated.
     pub async fn revert_all(&mut self) -> Result<MigrationSummary, Error> {
         self.check_migrations().await?;
 
@@ -509,20 +526,21 @@ where
         self.revert(1).await
     }
 
-    /// Force 
+    /// Forcibly set a given migration version in the database.
+    /// No migrations will be applied or reverted.
+    ///
+    /// This function should be considered (almost) idempotent, and repeatedly calling it
+    /// should result in the same state. Some database-specific values can change, such as timestamps.
     /// 
     /// # Errors
-    /// 
+    ///
     /// The forced migration version must exist locally.
-    /// 
+    ///
     /// Connection and database errors are returned.
-    /// 
+    ///
     /// Truncating the migrations table and applying migrations are done
     /// in separate transactions. As a consequence in some occasions
     /// the migrations table might be cleared and no migrations will be set.
-    /// 
-    /// This function should be considered (almost) idempotent, and repeatedly calling it
-    /// should result in the same state. Some database-specific values can change, such as timestamps.
     pub async fn force_version(&mut self, version: u64) -> Result<MigrationSummary, Error> {
         self.local_migration(version)?;
 
@@ -574,26 +592,26 @@ where
     }
 
     /// Verify all the migrations.
-    /// 
+    ///
     /// # Errors
-    /// 
+    ///
     /// The following kind of errors can be returned:
-    /// 
+    ///
     /// - connection and database errors
     /// - mismatch errors
-    /// 
+    ///
     /// Mismatch errors can happen if the local migrations'
     /// name or checksum does not match the applied migration's.
-    /// 
+    ///
     /// Both name and checksum validation can be turned off via [`MigratorOptions`].
     pub async fn verify(&mut self) -> Result<(), Error> {
         self.check_migrations().await
     }
 
     /// List all local and applied migrations.
-    /// 
+    ///
     /// # Errors
-    /// 
+    ///
     /// Errors are returned on connection and database errors.
     /// The migrations themselves are not verified.
     pub async fn status(&mut self) -> Result<Vec<MigrationStatus>, Error> {
@@ -811,7 +829,7 @@ impl From<sqlx::Error> for Error {
 }
 
 /// An opaque error type returned by user-provided migration functions.
-/// 
+///
 /// Currently [`anyhow::Error`] is used, but it should be considered an implementation detail.
 pub type MigrationError = anyhow::Error;
 

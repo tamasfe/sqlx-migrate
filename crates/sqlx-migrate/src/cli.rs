@@ -10,8 +10,8 @@ use clap::StructOpt;
 use comfy_table::{Cell, CellAlignment, ContentArrangement, Table};
 use filetime::FileTime;
 use regex::Regex;
-use sqlx::Database;
-use std::{fs, io, path::Path, process, str::FromStr};
+use sqlx::{Database, ConnectOptions};
+use std::{fs, io, path::Path, process, str::FromStr, time::Duration};
 use time::{format_description, OffsetDateTime};
 use tracing_subscriber::{
     fmt::format::FmtSpan, prelude::__tracing_subscriber_SubscriberExt, util::SubscriberInitExt,
@@ -19,7 +19,7 @@ use tracing_subscriber::{
 };
 
 #[derive(Debug, clap::Parser)]
-struct Migrate {
+pub struct Migrate {
     /// Disable colors in messages.
     #[clap(long, global(true))]
     no_colors: bool,
@@ -35,6 +35,9 @@ struct Migrate {
     /// Skip verifying names.
     #[clap(long, alias = "no-verify-name", global(true))]
     no_verify_names: bool,
+    /// Log all SQL statements.
+    #[clap(long, global(true))]
+    log_statements: bool,
     /// Database URL, if not given the `DATABASE_URL` environment variable will be used.
     #[clap(long, visible_alias = "db-url", global(true))]
     database_url: Option<String>,
@@ -90,6 +93,9 @@ enum Operation {
         #[clap(conflicts_with = "name", required_unless_present("name"))]
         version: Option<u64>,
     },
+    /// Verify migrations and print errors.
+    #[clap(visible_aliases = &["verify", "validate"])]
+    Check {},
     /// List all migrations.
     #[clap(visible_aliases = &["list", "ls", "get"])]
     Status {},
@@ -103,7 +109,7 @@ enum Operation {
         #[clap(long)]
         sql: bool,
         /// Create a "revert" or "down" migration.
-        #[clap(long, short = 'r', visible_alias = "revert")]
+        #[clap(long, short = 'r', visible_aliases = &["revert", "revertible"])]
         reversible: bool,
         /// The SQLx type of the database in Rust migrations.
         ///
@@ -206,6 +212,7 @@ where
         Operation::Force { name, version } => {
             force(&migrate, migrator, name.as_deref(), *version).await;
         }
+        Operation::Check {} => check(&migrate, migrator).await,
         Operation::Status {} => {
             log_status(&migrate, migrator).await;
         }
@@ -216,6 +223,24 @@ where
             name,
             ty,
         } => add(&migrate, migrations_path, *sql, *reversible, name, *ty),
+    }
+}
+
+async fn check<DB>(
+    _migrate: &Migrate,
+    mut migrator: Migrator<DB>,
+) where
+    DB: Database,
+    DB::Connection: db::Migrations,
+{
+    match migrator.check_migrations().await {
+        Ok(_) => {
+            tracing::info!("No issues found");
+        },
+        Err(err) => {
+            tracing::error!(error = %err, "error verifying migrations");
+            process::exit(1);
+        },
     }
 }
 
@@ -505,6 +530,8 @@ where
         }
     };
 
+    let all_valid = status.iter().all(mig_ok);
+
     let mut table = Table::new();
 
     table
@@ -514,7 +541,7 @@ where
             Cell::new("Name").set_alignment(CellAlignment::Center),
             Cell::new("Applied").set_alignment(CellAlignment::Center),
             Cell::new("Valid").set_alignment(CellAlignment::Center),
-            Cell::new("Reversible").set_alignment(CellAlignment::Center),
+            Cell::new("Revertible").set_alignment(CellAlignment::Center),
         ]));
 
     for mig in status {
@@ -531,6 +558,10 @@ where
     }
 
     println!("{}", table);
+
+    if !all_valid {
+        process::exit(1);
+    }
 }
 
 fn print_summary(summary: &MigrationSummary) {
@@ -597,13 +628,29 @@ where
             if let Ok(url) = std::env::var("DATABASE_URL") {
                 url
             } else {
-                tracing::error!("`DATABASE_URL` environment variable is required");
+                tracing::error!("`DATABASE_URL` environment variable or `--database-url` argument is required");
                 process::exit(1);
             }
         }
     };
 
-    match Migrator::connect(&db_url).await {
+    let mut options =
+        match db_url.parse::<<<DB as Database>::Connection as sqlx::Connection>::Options>() {
+            Ok(opts) => opts,
+            Err(err) => {
+                tracing::error!(error = %err, "invalid database URL");
+                process::exit(1);
+            }
+        };
+    
+    if migrate.log_statements {
+        options.log_statements("INFO".parse().unwrap());
+        options.log_slow_statements("WARN".parse().unwrap(), Duration::from_secs(1));
+    } else {
+        options.disable_statement_logging();
+    }
+
+    match Migrator::connect_with(&options).await {
         Ok(mut mig) => {
             mig.set_options(MigratorOptions {
                 verify_checksums: !migrate.no_verify_checksums,

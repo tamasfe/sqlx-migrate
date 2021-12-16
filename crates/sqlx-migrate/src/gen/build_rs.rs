@@ -4,6 +4,9 @@ use quote::quote;
 use std::{fs, path::Path};
 use walkdir::WalkDir;
 
+/// Generate Rust code from a migrations directory.
+/// It is meant to be used in `build.rs`.
+/// 
 /// # Panics
 ///
 /// This function is meant to be used in `build.rs` and will panic on errors.

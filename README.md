@@ -37,7 +37,7 @@ An opinionated database migration micro-framework library built on top of [SQLx]
 
 For usage purely from Rust code, see the [documentation reference](https://docs.rs/sqlx-migrate).
 
-For generated code. embedded migrations, and CLI usage see the [example](examples/migrations-example).
+For generated code, embedded migrations, and CLI usage see the [example](examples/migrations-example).
 
 ## Feature Flags
 
@@ -45,6 +45,7 @@ All features are disabled by default.
 
 - `generate`: Enable the ability to generate migration code with checksums and dates in `build.rs` scripts.
 - `cli`: Expose a CLI [clap](https://docs.rs/clap/3.0.0-rc.5/clap/index.html) application as a library that can manage a given migration set.
+- `validate-sql`: Validate SQL files during code generation on a best-effort basis.
 
 Database-specific features:
 
@@ -55,7 +56,7 @@ Database-specific features:
 - [ ] Proper tests
 - [ ] Verify correctness, safety
 - [ ] Probably better documentation
-- [ ] More Database support
+- [ ] Support more databases
 
 ### Supported Databases
 
@@ -81,7 +82,7 @@ The basic idea was to do all database operations via SQLx and define an interfac
 
 Then provide some way, a `Migrator` that does the bookeeping and all operations with the migrations in the database.
 
-Additionally I wrote some logic that structures rust code and SQL scripts in the usual `migrations` directory everyone is used to. Then the contents of this directory (the migrations) are verified and embedded into existing Rust code with `include!`-s. This is all done in `build.rs`, I started with macros originally but it sucked and had too many drawbacks. I made sure that `rust-analyzer` is fine with my hacks its features work correctly in all Rust code.
+Additionally I wrote some logic that structures rust code and SQL scripts in the usual `migrations` directory everyone is used to. Then the contents of this directory (the migrations) are verified and embedded into existing Rust code with `include!`-s. This is all done in `build.rs`, I started with macros originally but it sucked and had too many drawbacks. I made sure that `rust-analyzer` is fine with my hacks and its features work correctly in all Rust code.
 
 In the end migrations even appear in rust docs!
 

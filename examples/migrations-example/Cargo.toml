@@ -8,10 +8,16 @@ edition = "2021"
 [dependencies]
 barrel = { version = "0.7.0", features = ["pg"] }
 sqlx = { version = "0.5.9", features = ["runtime-tokio-rustls", "postgres"] }
-sqlx-migrate = { version = "0.1.0", features = ["cli", "postgres"] }
+sqlx-migrate = { version = "0.2.0", path = "../../crates/sqlx-migrate", features = [
+    "cli",
+    "postgres",
+] }
 
 [build-dependencies]
-sqlx-migrate = { version = "0.1.0", features = ["generate"] }
+sqlx-migrate = { version = "0.2.0", path = "../../crates/sqlx-migrate", features = [
+    "generate",
+    "validate-sql",
+] }
 
 [[bin]]
 name = "migrations-example"

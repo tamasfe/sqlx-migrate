@@ -154,7 +154,7 @@ pub fn migrations(db: DatabaseType, migrations_path: &Path) -> TokenStream {
     // Migrations by their name.
     let mut migrations: HashMap<String, Migration> = HashMap::new();
 
-    let db = format_ident!("{}", db.sqlx_type());
+    let db_ident = format_ident!("{}", db.sqlx_type());
 
     for file in fs::read_dir(&migrations_path).unwrap() {
         let file = file.unwrap();
@@ -217,9 +217,10 @@ pub fn migrations(db: DatabaseType, migrations_path: &Path) -> TokenStream {
                         });
                     }
                     MigrationSourceKind::Sql => {
+                        validate_sql(&file_path, db);
                         mig.up_fn = Some(quote! {
                             use sqlx::Executor;
-                            let tx: &mut sqlx::Transaction<sqlx::#db> = tx;
+                            let tx: &mut sqlx::Transaction<sqlx::#db_ident> = tx;
                             tx.execute(include_str!(#file_path_str)).await?;
                             Ok(())
                         });
@@ -247,9 +248,10 @@ pub fn migrations(db: DatabaseType, migrations_path: &Path) -> TokenStream {
                         });
                     }
                     MigrationSourceKind::Sql => {
+                        validate_sql(&file_path, db);
                         mig.down_fn = Some(quote! {
                             use sqlx::Executor;
-                            let tx: &mut sqlx::Transaction<sqlx::#db> = tx;
+                            let tx: &mut sqlx::Transaction<sqlx::#db_ident> = tx;
                             tx.execute(include_str!(#file_path_str)).await?;
                             Ok(())
                         });
@@ -319,6 +321,24 @@ struct MigrationSplit {
     name: String,
     kind: MigrationKind,
     source: MigrationSourceKind,
+}
+
+fn validate_sql(path: &Path, db: DatabaseType) {
+    #[cfg(feature = "validate-sql")]
+    {
+        let src = fs::read_to_string(path).unwrap();
+
+        match db {
+            DatabaseType::Postgres => {
+                if let Err(err) = sqlparser::parser::Parser::parse_sql(&sqlparser::dialect::PostgreSqlDialect {}, &src) {
+                    panic!("invalid SQL in file {:?}:\n{}", path, err);
+                }
+            },
+            DatabaseType::Any => {
+                // We don't know for sure, so we don't even try validating it.
+            },
+        }
+    }
 }
 
 // (full_name, date, name, sql)
