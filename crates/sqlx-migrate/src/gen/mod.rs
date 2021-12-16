@@ -14,12 +14,11 @@ pub use build_rs::generate;
 
 #[must_use]
 pub fn migration_modules(migrations_path: &Path) -> TokenStream {
-    if !migrations_path.is_dir() {
-        panic!(
-            "migrations path must be a directory ({:?})",
-            migrations_path
-        );
-    }
+    assert!(
+        migrations_path.is_dir(),
+        "migrations path must be a directory ({:?})",
+        migrations_path
+    );
 
     let mut modules = quote! {};
 
@@ -144,12 +143,11 @@ struct Migration {
 #[allow(clippy::too_many_lines)]
 #[must_use]
 pub fn migrations(db: DatabaseType, migrations_path: &Path) -> TokenStream {
-    if !migrations_path.is_dir() {
-        panic!(
-            "migrations path must be a directory ({:?})",
-            migrations_path
-        );
-    }
+    assert!(
+        migrations_path.is_dir(),
+        "migrations path must be a directory ({:?})",
+        migrations_path
+    );
 
     // Migrations by their name.
     let mut migrations: HashMap<String, Migration> = HashMap::new();
@@ -190,9 +188,11 @@ pub fn migrations(db: DatabaseType, migrations_path: &Path) -> TokenStream {
 
         match split.kind {
             MigrationKind::Up => {
-                if mig.up_fn.is_some() {
-                    panic!("duplicate up migration for {}", &mig.name);
-                }
+                assert!(
+                    mig.up_fn.is_none(),
+                    "duplicate up migration for {}",
+                    &mig.name
+                );
 
                 let source_string = fs::read_to_string(&file_path).unwrap();
 
@@ -228,9 +228,11 @@ pub fn migrations(db: DatabaseType, migrations_path: &Path) -> TokenStream {
                 }
             }
             MigrationKind::Down => {
-                if mig.down_fn.is_some() {
-                    panic!("duplicate down migration for {}", &mig.name);
-                }
+                assert!(
+                    mig.down_fn.is_none(),
+                    "duplicate down migration for {}",
+                    &mig.name
+                );
 
                 let file_path_str = file_path.to_string_lossy().to_string();
 
@@ -278,9 +280,7 @@ pub fn migrations(db: DatabaseType, migrations_path: &Path) -> TokenStream {
 
         let checksum_bs = Literal::byte_string(&up_checksum.unwrap());
 
-        if up_fn.is_none() {
-            panic!("missing up migration for {}", &name);
-        }
+        assert!(up_fn.is_some(), "missing up migration for {}", &name);
 
         migration_tokens.extend(quote! {
             sqlx_migrate::Migration::new(
@@ -330,26 +330,33 @@ fn validate_sql(path: &Path, db: DatabaseType) {
 
         match db {
             DatabaseType::Postgres => {
-                if let Err(err) = sqlparser::parser::Parser::parse_sql(&sqlparser::dialect::PostgreSqlDialect {}, &src) {
+                if let Err(err) = sqlparser::parser::Parser::parse_sql(
+                    &sqlparser::dialect::PostgreSqlDialect {},
+                    &src,
+                ) {
                     panic!("invalid SQL in file {:?}:\n{}", path, err);
                 }
-            },
+            }
             DatabaseType::Any => {
                 // We don't know for sure, so we don't even try validating it.
-            },
+            }
         }
     }
 }
 
 // (full_name, date, name, sql)
 fn split_name(file_name: &str, file_name_lower: &str) -> MigrationSplit {
-    if !file_name.is_ascii() {
-        panic!("file name must be ASCII ({})", file_name);
-    }
+    assert!(
+        file_name.is_ascii(),
+        "file name must be ASCII ({})",
+        file_name
+    );
 
-    if file_name.len() < MIG_DATE_PREFIX_LEN {
-        panic!("invalid migration file name ({})", file_name);
-    }
+    assert!(
+        file_name.len() >= MIG_DATE_PREFIX_LEN,
+        "invalid migration file name ({})",
+        file_name
+    );
 
     let date: u64 = file_name[..MIG_DATE_PREFIX_LEN - 1].parse().unwrap();
 

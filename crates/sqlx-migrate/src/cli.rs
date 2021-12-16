@@ -10,7 +10,7 @@ use clap::StructOpt;
 use comfy_table::{Cell, CellAlignment, ContentArrangement, Table};
 use filetime::FileTime;
 use regex::Regex;
-use sqlx::{Database, ConnectOptions};
+use sqlx::{ConnectOptions, Database};
 use std::{fs, io, path::Path, process, str::FromStr, time::Duration};
 use time::{format_description, OffsetDateTime};
 use tracing_subscriber::{
@@ -29,12 +29,15 @@ pub struct Migrate {
     /// Force the operation, required for some actions.
     #[clap(long = "do-as-i-say", visible_aliases = &["force"], global(true))]
     force: bool,
-    /// Skip verifying checksums.
+    /// Skip verifying migration checksums.
     #[clap(long, alias = "no-verify-checksum", global(true))]
     no_verify_checksums: bool,
-    /// Skip verifying names.
+    /// Skip verifying migration names.
     #[clap(long, alias = "no-verify-name", global(true))]
     no_verify_names: bool,
+    /// Skip loading .env files.
+    #[clap(long, global(true))]
+    no_env_file: bool,
     /// Log all SQL statements.
     #[clap(long, global(true))]
     log_statements: bool,
@@ -186,6 +189,18 @@ pub fn run<DB>(
     let migrate = Migrate::parse();
     setup_logging(&migrate);
 
+    if !migrate.no_env_file {
+        if let Ok(cwd) = std::env::current_dir() {
+            let env_path = cwd.join(".env");
+            if env_path.is_file() {
+                tracing::info!(path = ?env_path, ".env file found");
+                if let Err(err) = dotenv::from_path(&env_path) {
+                    tracing::warn!(path = ?env_path, error = %err, "failed to load .env file");
+                }
+            }
+        }
+    }
+
     let migrations = migrations.into_iter().collect::<Vec<_>>();
 
     tokio::runtime::Builder::new_current_thread()
@@ -226,21 +241,19 @@ where
     }
 }
 
-async fn check<DB>(
-    _migrate: &Migrate,
-    mut migrator: Migrator<DB>,
-) where
+async fn check<DB>(_migrate: &Migrate, mut migrator: Migrator<DB>)
+where
     DB: Database,
     DB::Connection: db::Migrations,
 {
     match migrator.check_migrations().await {
         Ok(_) => {
             tracing::info!("No issues found");
-        },
+        }
         Err(err) => {
             tracing::error!(error = %err, "error verifying migrations");
             process::exit(1);
-        },
+        }
     }
 }
 
@@ -628,7 +641,9 @@ where
             if let Ok(url) = std::env::var("DATABASE_URL") {
                 url
             } else {
-                tracing::error!("`DATABASE_URL` environment variable or `--database-url` argument is required");
+                tracing::error!(
+                    "`DATABASE_URL` environment variable or `--database-url` argument is required"
+                );
                 process::exit(1);
             }
         }
@@ -642,7 +657,7 @@ where
                 process::exit(1);
             }
         };
-    
+
     if migrate.log_statements {
         options.log_statements("INFO".parse().unwrap());
         options.log_slow_statements("WARN".parse().unwrap(), Duration::from_secs(1));

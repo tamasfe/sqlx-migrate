@@ -42,6 +42,7 @@ comfy-table = { version = "5.0.0", optional = true }
 time = { version = "0.3.5", optional = true, features = ["formatting"] }
 regex = { version = "1.5.4", optional = true }
 filetime = { version = "0.2.15", optional = true }
+dotenv = { version = "0.15.0", optional = true }
 
 [dev-dependencies]
 tokio = { version = "1.14.0", features = ["rt-multi-thread", "macros"] }
@@ -68,10 +69,12 @@ cli = [
     "sqlx/runtime-tokio-rustls",
     "regex",
     "filetime",
+    "dotenv",
 ]
 
 postgres = ["sqlx/postgres"]
 
+# Used for documentation generation purposes only.
 _docs = ["sqlx/runtime-tokio-rustls"]
 
 [package.metadata.docs.rs]

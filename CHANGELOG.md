@@ -1,5 +1,20 @@
-
 # Changelog
+
+## 0.3.0
+
+### Features
+
+- Support loading `.env` in the CLI.
+
+### Misc
+
+- Show feature flags in rustdoc
+
+## 0.2.1
+
+### Fixes
+
+- fixed crates.io categories
 
 ## 0.2.0
 

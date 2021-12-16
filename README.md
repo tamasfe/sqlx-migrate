@@ -82,7 +82,7 @@ The basic idea was to do all database operations via SQLx and define an interfac
 
 Then provide some way, a `Migrator` that does the bookeeping and all operations with the migrations in the database.
 
-Additionally I wrote some logic that structures rust code and SQL scripts in the usual `migrations` directory everyone is used to. Then the contents of this directory (the migrations) are verified and embedded into existing Rust code with `include!`-s. This is all done in `build.rs`, I started with macros originally but it sucked and had too many drawbacks. I made sure that `rust-analyzer` is fine with my hacks and its features work correctly in all Rust code.
+Additionally I wrote some logic that structures rust code and SQL scripts in the usual `migrations` directory everyone is used to. Then the contents of this directory (the migrations) are verified and embedded into existing Rust code with `include!`-s. This is all done in `build.rs`, I started with macros originally but they sucked really, just added more complexity and required workarounds. I made sure that `rust-analyzer` is fine with my hacks and its features work correctly in all Rust code.
 
 In the end migrations even appear in rust docs!
 

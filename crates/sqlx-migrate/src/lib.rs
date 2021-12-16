@@ -4,7 +4,7 @@
 //!
 //! All migrations are written in Rust, and are designed to embedded in existing applications.
 //!
-
+#![cfg_attr(feature = "_docs", feature(doc_cfg))]
 #![deny(unsafe_code)]
 #![warn(clippy::pedantic)]
 #![allow(
@@ -30,12 +30,15 @@ use thiserror::Error;
 pub mod db;
 
 #[cfg(feature = "cli")]
+#[cfg_attr(feature = "_docs", doc(cfg(feature = "cli")))]
 pub mod cli;
 
 #[cfg(feature = "generate")]
+#[cfg_attr(feature = "_docs", doc(cfg(feature = "generate")))]
 mod gen;
 
 #[cfg(feature = "generate")]
+#[cfg_attr(feature = "_docs", doc(cfg(feature = "generate")))]
 pub use gen::generate;
 
 type MigrationFn<DB> = Box<
@@ -47,6 +50,7 @@ type MigrationFn<DB> = Box<
 /// The default migrations table used by all migrators.
 pub const DEFAULT_MIGRATIONS_TABLE: &str = "_sqlx_migrations";
 
+/// Commonly used types and functions.
 pub mod prelude {
     pub use super::Error;
     pub use super::Migration;
@@ -531,7 +535,7 @@ where
     ///
     /// This function should be considered (almost) idempotent, and repeatedly calling it
     /// should result in the same state. Some database-specific values can change, such as timestamps.
-    /// 
+    ///
     /// # Errors
     ///
     /// The forced migration version must exist locally.
