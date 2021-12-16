@@ -16,7 +16,7 @@ categories = ["Database interfaces", "Development tools"]
 anyhow = "1.0.51"
 async-trait = "0.1.52"
 crc = "2.1.0"
-futures-core = "0.3.18"
+futures-core = "0.3.17"
 humantime = "2.1.0"
 sqlx = { version = "0.5.9" }
 thiserror = "1.0.30"
