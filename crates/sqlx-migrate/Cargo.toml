@@ -1,6 +1,6 @@
 [package]
 name = "sqlx-migrate"
-version = "0.1.0"
+version = "0.1.1"
 edition = "2021"
 description = "A database migration micro-framework based on SQLx"
 repository = "https://github.com/tamasfe/sqlx-migrate"
@@ -8,7 +8,7 @@ authors = ["tamasfe"]
 homepage = "https://github.com/tamasfe/sqlx-migrate"
 license = "MIT"
 keywords = ["sqlx", "database", "migration"]
-categories = ["Database interfaces", "Development tools"]
+categories = ["database-interfaces", "development-tools"]
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
@@ -68,6 +68,8 @@ cli = [
 ]
 
 postgres = ["sqlx/postgres"]
+
+_docs = ["sqlx/runtime-tokio-rustls"]
 
 [package.metadata.docs.rs]
 all-features = true

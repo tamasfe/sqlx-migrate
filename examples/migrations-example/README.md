@@ -56,7 +56,7 @@ fn main() {
 This will generate `src/generated.rs` based on the given `migrations` directory.
 The migrations directory has to be created manually, but all generated source directories will be created.
 
-Make sure that the generated module is included in your module tree, you can also use `lib.rs` if you intend to use the package for generated migrations.
+Make sure that the generated module is included in your module tree, you can also use `lib.rs` if you intend to use the package for generated migrations only.
 
 Finally add the `sqlx-migrate` CLI, for example in `bin/migrate.rs` with the following content:
 

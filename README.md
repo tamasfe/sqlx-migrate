@@ -1,6 +1,6 @@
 # SQLx Migrate
 
-![Crates.io](https://img.shields.io/crates/v/sqlx-migrate?style=flat-square) ![docs.rs](https://img.shields.io/docsrs/sqlx-migrate?style=flat-square)
+[![Crates.io](https://img.shields.io/crates/v/sqlx-migrate?style=flat-square)](https://crates.io/crates/sqlx-migrate) [![docs.rs](https://img.shields.io/docsrs/sqlx-migrate?style=flat-square)](https://docs.rs/sqlx-migrate)
 
 An opinionated database migration micro-framework library built on top of [SQLx](https://github.com/launchbadge/sqlx).
 
