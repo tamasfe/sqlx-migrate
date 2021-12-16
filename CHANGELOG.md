@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.3.1
+
+### Misc
+
+- Relaxed dependency version requirements
+
 ## 0.3.0
 
 ### Features
