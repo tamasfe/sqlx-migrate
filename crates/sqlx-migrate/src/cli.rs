@@ -5,7 +5,7 @@
     dead_code,
     unused_variables
 )]
-use crate::{db, prelude::*, DEFAULT_MIGRATIONS_TABLE};
+use crate::{db, prelude::*, DEFAULT_MIGRATIONS_TABLE, DatabaseType};
 use clap::StructOpt;
 use comfy_table::{Cell, CellAlignment, ContentArrangement, Table};
 use filetime::FileTime;
@@ -135,37 +135,6 @@ pub enum Operation {
         /// It must be across all migrations.
         name: String,
     },
-}
-
-// Due to crate hierarchy issues this type is duplicated in
-// `sqlx-migrate-gen`, if you modify this, make sure
-// to update it there as well.
-#[derive(Debug, Clone, Copy)]
-#[non_exhaustive]
-enum DatabaseType {
-    Postgres,
-    Any,
-}
-
-impl DatabaseType {
-    fn sqlx_type(self) -> &'static str {
-        match self {
-            DatabaseType::Postgres => "Postgres",
-            DatabaseType::Any => "Any",
-        }
-    }
-}
-
-impl FromStr for DatabaseType {
-    type Err = anyhow::Error;
-
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
-        match s {
-            "postgres" => Ok(Self::Postgres),
-            "any" => Ok(Self::Any),
-            db => Err(anyhow::anyhow!("invalid database type `{}`", db)),
-        }
-    }
 }
 
 /// Run a CLI application that provides operations with the
