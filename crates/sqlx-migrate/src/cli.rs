@@ -54,7 +54,7 @@ pub struct Migrate {
 
 /// A command-line operation.
 #[derive(Debug, clap::Subcommand)]
-enum Operation {
+pub enum Operation {
     /// Apply all migrations up to and including the given migration.
     ///
     /// If no migration is given, all migrations are applied.
