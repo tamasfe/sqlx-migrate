@@ -18,39 +18,41 @@ use tracing_subscriber::{
     EnvFilter,
 };
 
+/// Command-line arguments.
 #[derive(Debug, clap::Parser)]
 pub struct Migrate {
     /// Disable colors in messages.
     #[clap(long, global(true))]
-    no_colors: bool,
+    pub no_colors: bool,
     /// Enable the logging of tracing spans.
     #[clap(long, global(true))]
-    verbose: bool,
+    pub verbose: bool,
     /// Force the operation, required for some actions.
     #[clap(long = "do-as-i-say", visible_aliases = &["force"], global(true))]
-    force: bool,
+    pub force: bool,
     /// Skip verifying migration checksums.
     #[clap(long, alias = "no-verify-checksum", global(true))]
-    no_verify_checksums: bool,
+    pub no_verify_checksums: bool,
     /// Skip verifying migration names.
     #[clap(long, alias = "no-verify-name", global(true))]
-    no_verify_names: bool,
+    pub no_verify_names: bool,
     /// Skip loading .env files.
     #[clap(long, global(true))]
-    no_env_file: bool,
+    pub no_env_file: bool,
     /// Log all SQL statements.
     #[clap(long, global(true))]
-    log_statements: bool,
+    pub log_statements: bool,
     /// Database URL, if not given the `DATABASE_URL` environment variable will be used.
     #[clap(long, visible_alias = "db-url", global(true))]
-    database_url: Option<String>,
+    pub database_url: Option<String>,
     /// The name of the migrations table.
     #[clap(long, default_value = DEFAULT_MIGRATIONS_TABLE, global(true))]
-    migrations_table: String,
+    pub migrations_table: String,
     #[clap(subcommand)]
-    operation: Operation,
+    pub operation: Operation,
 }
 
+/// A command-line operation.
 #[derive(Debug, clap::Subcommand)]
 enum Operation {
     /// Apply all migrations up to and including the given migration.
@@ -186,7 +188,18 @@ pub fn run<DB>(
     DB: Database,
     DB::Connection: db::Migrations,
 {
-    let migrate = Migrate::parse();
+    run_parsed(Migrate::parse(), migrations_path, migrations)
+}
+
+/// Same as [`run`], but allows for parsing and inspecting [`Migrate`] beforehand.
+pub fn run_parsed<DB>(
+    migrate: Migrate,
+    migrations_path: impl AsRef<Path>,
+    migrations: impl IntoIterator<Item = Migration<DB>>,
+) where
+    DB: Database,
+    DB::Connection: db::Migrations,
+{
     setup_logging(&migrate);
 
     if !migrate.no_env_file {
