@@ -5,7 +5,7 @@
     dead_code,
     unused_variables
 )]
-use crate::{db, prelude::*, DEFAULT_MIGRATIONS_TABLE, DatabaseType};
+use crate::{db, prelude::*, DatabaseType, DEFAULT_MIGRATIONS_TABLE};
 use clap::StructOpt;
 use comfy_table::{Cell, CellAlignment, ContentArrangement, Table};
 use filetime::FileTime;
@@ -197,20 +197,25 @@ where
     DB: Database,
     DB::Connection: db::Migrations,
 {
-    let migrator = setup_migrator(&migrate, migrations).await;
-
     match &migrate.operation {
         Operation::Migrate { name, version } => {
+            let migrator = setup_migrator(&migrate, migrations).await;
             do_migrate(&migrate, migrator, name.as_deref(), *version).await;
         }
         Operation::Revert { name, version } => {
+            let migrator = setup_migrator(&migrate, migrations).await;
             revert(&migrate, migrator, name.as_deref(), *version).await;
         }
         Operation::Force { name, version } => {
+            let migrator = setup_migrator(&migrate, migrations).await;
             force(&migrate, migrator, name.as_deref(), *version).await;
         }
-        Operation::Check {} => check(&migrate, migrator).await,
+        Operation::Check {} => {
+            let migrator = setup_migrator(&migrate, migrations).await;
+            check(&migrate, migrator).await;
+        }
         Operation::Status {} => {
+            let migrator = setup_migrator(&migrate, migrations).await;
             log_status(&migrate, migrator).await;
         }
         #[cfg(debug_assertions)]
