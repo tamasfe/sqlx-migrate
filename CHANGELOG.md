@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.3.2
+
+### Fixes
+
+- Removed `sqlx/runtime-tokio-rustls` CLI feature dependency
+
 ## 0.3.1
 
 ### Misc
