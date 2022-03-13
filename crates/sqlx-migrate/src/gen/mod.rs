@@ -323,24 +323,20 @@ struct MigrationSplit {
     source: MigrationSourceKind,
 }
 
-fn validate_sql(path: &Path, db: DatabaseType) {
+fn validate_sql(_path: &Path, _db: DatabaseType) {
     #[cfg(feature = "validate-sql")]
     {
-        let src = fs::read_to_string(path).unwrap();
+        unimplemented!()
+        // let src = fs::read_to_string(path).unwrap();
 
-        match db {
-            DatabaseType::Postgres => {
-                if let Err(err) = sqlparser::parser::Parser::parse_sql(
-                    &sqlparser::dialect::PostgreSqlDialect {},
-                    &src,
-                ) {
-                    panic!("invalid SQL in file {:?}:\n{}", path, err);
-                }
-            }
-            DatabaseType::Any => {
-                // We don't know for sure, so we don't even try validating it.
-            }
-        }
+        // match db {
+        //     DatabaseType::Postgres => {
+
+        //     }
+        //     DatabaseType::Any => {
+        //         // We don't know for sure, so we don't even try validating it.
+        //     }
+        // }
     }
 }
 

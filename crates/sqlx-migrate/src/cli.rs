@@ -125,6 +125,7 @@ pub enum Operation {
             aliases = &["type"],
             possible_values = &[
                 "postgres",
+                "sqlite",
                 "any"
             ],
             default_value = "any"
@@ -157,10 +158,11 @@ pub fn run<DB>(
     DB: Database,
     DB::Connection: db::Migrations,
 {
-    run_parsed(Migrate::parse(), migrations_path, migrations)
+    run_parsed(Migrate::parse(), migrations_path, migrations);
 }
 
 /// Same as [`run`], but allows for parsing and inspecting [`Migrate`] beforehand.
+#[allow(clippy::missing_panics_doc)]
 pub fn run_parsed<DB>(
     migrate: Migrate,
     migrations_path: impl AsRef<Path>,

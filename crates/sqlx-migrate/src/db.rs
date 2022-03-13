@@ -3,6 +3,9 @@
 #[cfg(feature = "postgres")]
 mod postgres;
 
+#[cfg(feature = "sqlite")]
+mod sqlite;
+
 use std::{borrow::Cow, time::Duration};
 use async_trait::async_trait;
 use sqlx::{Connection, Transaction};

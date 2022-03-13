@@ -1,6 +1,6 @@
 [package]
 name = "sqlx-migrate"
-version = "0.3.6"
+version = "0.4.0"
 edition = "2021"
 description = "A database migration micro-framework based on SQLx"
 repository = "https://github.com/tamasfe/sqlx-migrate"
@@ -71,6 +71,7 @@ cli = [
     "dotenv",
 ]
 
+sqlite = ["sqlx/sqlite"]
 postgres = ["sqlx/postgres"]
 
 # Used for documentation generation purposes only.

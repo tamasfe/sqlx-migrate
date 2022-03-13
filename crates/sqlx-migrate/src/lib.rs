@@ -110,6 +110,7 @@ impl<DB: Database> Migration<DB> {
     }
 
     /// Set a down migration function.
+    #[must_use]
     pub fn reversible(
         mut self,
         down: impl for<'future> Fn(
@@ -122,6 +123,7 @@ impl<DB: Database> Migration<DB> {
     }
 
     /// Same as [`Migration::reversible`]
+    #[must_use]
     pub fn revertible(
         self,
         down: impl for<'future> Fn(
@@ -135,6 +137,7 @@ impl<DB: Database> Migration<DB> {
     /// Set a checksum for the migration.
     ///
     /// A checksum is only useful for migrations that come from external sources.
+    #[must_use]
     pub fn with_checksum(mut self, checksum: impl Into<Cow<'static, [u8]>>) -> Self {
         self.checksum = checksum.into();
         self
@@ -367,13 +370,11 @@ where
                 "applying migration"
             );
 
-            (&*mig.up)(&mut tx)
-                .await
-                .map_err(|error| Error::Migration {
-                    name: mig.name.clone(),
-                    version,
-                    error,
-                })?;
+            (*mig.up)(&mut tx).await.map_err(|error| Error::Migration {
+                name: mig.name.clone(),
+                version,
+                error,
+            })?;
 
             let execution_time = Instant::now() - start;
 
@@ -842,6 +843,7 @@ pub type MigrationError = anyhow::Error;
 #[non_exhaustive]
 pub enum DatabaseType {
     Postgres,
+    Sqlite,
     Any,
 }
 
@@ -849,6 +851,7 @@ impl DatabaseType {
     fn sqlx_type(self) -> &'static str {
         match self {
             DatabaseType::Postgres => "Postgres",
+            DatabaseType::Sqlite => "Sqlite",
             DatabaseType::Any => "Any",
         }
     }
@@ -860,6 +863,7 @@ impl FromStr for DatabaseType {
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         match s {
             "postgres" => Ok(Self::Postgres),
+            "sqlite" => Ok(Self::Sqlite),
             "any" => Ok(Self::Any),
             db => Err(anyhow::anyhow!("invalid database type `{}`", db)),
         }
