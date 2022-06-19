@@ -1,6 +1,6 @@
 [package]
 name = "sqlx-migrate"
-version = "0.4.0"
+version = "0.5.0"
 edition = "2021"
 description = "A database migration micro-framework based on SQLx"
 repository = "https://github.com/tamasfe/sqlx-migrate"
@@ -15,10 +15,10 @@ categories = ["database", "development-tools"]
 [dependencies]
 anyhow = "1"
 async-trait = "0.1"
-crc = "2.1"
+crc = "3.0.0"
 futures-core = "0.3"
 humantime = "2.1.0"
-sqlx = { version = "0.5" }
+sqlx = { version = "0.6.0" }
 thiserror = "1"
 tracing = "0.1"
 itertools = "0.10"
@@ -29,7 +29,7 @@ quote = { version = "1", optional = true }
 sha2 = { version = "0.10", optional = true }
 syn = { version = "1", optional = true }
 walkdir = { version = "2.3", optional = true }
-sqlparser = { version = "0.13", optional = true }
+sqlparser = { version = "0.18", optional = true }
 
 # CLI dependencies
 clap = { version = "3.0.0-rc.4", features = ["derive"], optional = true }
@@ -38,7 +38,7 @@ tracing-subscriber = { version = "0.3.3", features = [
 ], optional = true }
 atty = { version = "0.2.14", optional = true }
 tokio = { version = "1.14.0", features = ["rt"], optional = true }
-comfy-table = { version = "5.0.0", optional = true }
+comfy-table = { version = "6.0.0", optional = true }
 time = { version = "0.3", optional = true, features = ["formatting"] }
 regex = { version = "1.5", optional = true }
 filetime = { version = "0.2", optional = true }
@@ -46,7 +46,7 @@ dotenv = { version = "0.15", optional = true }
 
 [dev-dependencies]
 tokio = { version = "1.14.0", features = ["rt-multi-thread", "macros"] }
-sqlx = { version = "0.5.9", features = ["runtime-tokio-rustls"] }
+sqlx = { version = "0.6.0", features = ["runtime-tokio-rustls"] }
 
 [features]
 default = []

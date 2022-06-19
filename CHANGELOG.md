@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.5.0
+
+### Other
+
+- Bumped sqlx to `0.6.0`.
+
+## 0.4.0
+
+### Features
+
+- Added Sqlite support
+
 ## 0.3.2
 
 ### Fixes
