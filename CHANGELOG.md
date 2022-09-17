@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.6.0
+
+### Features
+
+- Instead of `Transaction`, a `MigrationContext` is passed to the migration functions. It is now possible to provide contextual information to migrations, allowing for customizing migrations e.g. for use in multi-tenant environments.
+- The way checksums are calculated has changed, since migration files are just ordinary rust code running rustfmt could change the checksum of migrations even if the queries were unchanged. Currently only the executed or prepared SQL queries are taken into account which will not change with formatting. The checksums for pure SQL migrations is unchanged.
+
+### Other
+
+- The library now uses unsafe to mask lifetimes so that the migration functions could be ergonomic. The unsafe blocks are all checked and documented, unfortunately testing with miri is not yet possible.
+- `dotenv` dependency was replaced with `dotenvy`
+- The `validate-sql` feature has been removed.
+
 ## 0.5.0
 
 ### Other

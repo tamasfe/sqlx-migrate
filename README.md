@@ -45,7 +45,6 @@ All features are disabled by default.
 
 - `generate`: Enable the ability to generate migration code with checksums and dates in `build.rs` scripts.
 - `cli`: Expose a CLI [clap](https://docs.rs/clap/3.0.0-rc.5/clap/index.html) application as a library that can manage a given migration set.
-- `validate-sql`: Validate SQL files during code generation on a best-effort basis.
 
 Database-specific features:
 

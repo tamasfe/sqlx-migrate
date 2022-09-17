@@ -1,5 +1,5 @@
 use crate::DatabaseType;
-use proc_macro2::{Ident, Literal, Span, TokenStream};
+use proc_macro2::{Ident, Span, TokenStream};
 use quote::{format_ident, quote};
 use sha2::{Digest, Sha256};
 use std::{
@@ -22,7 +22,7 @@ pub fn migration_modules(migrations_path: &Path) -> TokenStream {
 
     let mut modules = quote! {};
 
-    let mut files = fs::read_dir(&migrations_path)
+    let mut files = fs::read_dir(migrations_path)
         .unwrap()
         .into_iter()
         .map(Result::unwrap)
@@ -108,6 +108,7 @@ pub fn migration_modules(migrations_path: &Path) -> TokenStream {
             MigrationSourceKind::Rust => {
                 modules.extend(quote! {
                     #[allow(dead_code)]
+                    #[allow(clippy::all, clippy::pedantic)]
                     #[path = #file_path_str]
                     #[doc = #docstr]
                     pub mod #name_ident;
@@ -119,6 +120,7 @@ pub fn migration_modules(migrations_path: &Path) -> TokenStream {
             MigrationSourceKind::Sql => {
                 modules.extend(quote! {
                     #[allow(dead_code)]
+                    #[allow(clippy::all, clippy::pedantic)]
                     #[doc = #docstr]
                     pub mod #name_ident {}
                 });
@@ -135,7 +137,6 @@ const MIG_DATE_PREFIX_LEN: usize = "20001010235912_".len();
 struct Migration {
     date: u64,
     name: String,
-    up_checksum: Option<Vec<u8>>,
     up_fn: Option<TokenStream>,
     down_fn: Option<TokenStream>,
 }
@@ -154,7 +155,7 @@ pub fn migrations(db: DatabaseType, migrations_path: &Path) -> TokenStream {
 
     let db_ident = format_ident!("{}", db.sqlx_type());
 
-    for file in fs::read_dir(&migrations_path).unwrap() {
+    for file in fs::read_dir(migrations_path).unwrap() {
         let file = file.unwrap();
 
         let file_path = file.path();
@@ -181,7 +182,6 @@ pub fn migrations(db: DatabaseType, migrations_path: &Path) -> TokenStream {
         let mig = migrations.entry(split.name.clone()).or_insert(Migration {
             date: split.date,
             name: split.name,
-            up_checksum: None,
             up_fn: None,
             down_fn: None,
         });
@@ -198,8 +198,6 @@ pub fn migrations(db: DatabaseType, migrations_path: &Path) -> TokenStream {
 
                 let mut hasher = Sha256::new();
                 hasher.update(source_string.as_bytes());
-                let hash = hasher.finalize().to_vec();
-                mig.up_checksum = Some(hash);
 
                 let file_path_str = file_path.to_string_lossy().to_string();
 
@@ -211,17 +209,16 @@ pub fn migrations(db: DatabaseType, migrations_path: &Path) -> TokenStream {
                             #[path = #file_path_str]
                             mod #mig_ident;
 
-                            #mig_ident::#mig_ident(tx).await?;
+                            #mig_ident::#mig_ident(ctx).await?;
 
                             Ok(())
                         });
                     }
                     MigrationSourceKind::Sql => {
-                        validate_sql(&file_path, db);
                         mig.up_fn = Some(quote! {
                             use sqlx::Executor;
-                            let tx: &mut sqlx::Transaction<sqlx::#db_ident> = tx;
-                            tx.execute(include_str!(#file_path_str)).await?;
+                            let mut ctx: sqlx_migrate::prelude::MigrationContext<sqlx::#db_ident> = ctx;
+                            ctx.tx().execute(include_str!(#file_path_str)).await?;
                             Ok(())
                         });
                     }
@@ -244,17 +241,16 @@ pub fn migrations(db: DatabaseType, migrations_path: &Path) -> TokenStream {
                             #[path = #file_path_str]
                             mod #mig_ident;
 
-                            #mig_ident::#mig_ident(tx).await?;
+                            #mig_ident::#mig_ident(ctx).await?;
 
                             Ok(())
                         });
                     }
                     MigrationSourceKind::Sql => {
-                        validate_sql(&file_path, db);
                         mig.down_fn = Some(quote! {
                             use sqlx::Executor;
-                            let tx: &mut sqlx::Transaction<sqlx::#db_ident> = tx;
-                            tx.execute(include_str!(#file_path_str)).await?;
+                            let mut ctx: sqlx_migrate::prelude::MigrationContext<sqlx::#db_ident> = ctx;
+                            ctx.tx().execute(include_str!(#file_path_str)).await?;
                             Ok(())
                         });
                     }
@@ -273,27 +269,23 @@ pub fn migrations(db: DatabaseType, migrations_path: &Path) -> TokenStream {
         let Migration {
             date: _,
             name,
-            up_checksum,
             up_fn,
             down_fn,
         } = mig;
-
-        let checksum_bs = Literal::byte_string(&up_checksum.unwrap());
 
         assert!(up_fn.is_some(), "missing up migration for {}", &name);
 
         migration_tokens.extend(quote! {
             sqlx_migrate::Migration::new(
-                #name, |tx| std::boxed::Box::pin(async move {
+                #name, |ctx| std::boxed::Box::pin(async move {
                     #up_fn
                 })
             )
-            .with_checksum(#checksum_bs.as_slice())
         });
 
         if let Some(down) = down_fn {
             migration_tokens.extend(quote! {
-                .reversible(|tx| std::boxed::Box::pin(async move {
+                .reversible(|ctx| std::boxed::Box::pin(async move {
                     #down
                 })
                 )
@@ -321,23 +313,6 @@ struct MigrationSplit {
     name: String,
     kind: MigrationKind,
     source: MigrationSourceKind,
-}
-
-fn validate_sql(_path: &Path, _db: DatabaseType) {
-    #[cfg(feature = "validate-sql")]
-    {
-        unimplemented!()
-        // let src = fs::read_to_string(path).unwrap();
-
-        // match db {
-        //     DatabaseType::Postgres => {
-
-        //     }
-        //     DatabaseType::Any => {
-        //         // We don't know for sure, so we don't even try validating it.
-        //     }
-        // }
-    }
 }
 
 // (full_name, date, name, sql)

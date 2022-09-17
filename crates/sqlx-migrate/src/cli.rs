@@ -28,7 +28,7 @@ pub struct Migrate {
     #[clap(long, global(true))]
     pub verbose: bool,
     /// Force the operation, required for some actions.
-    #[clap(long = "do-as-i-say", visible_aliases = &["force"], global(true))]
+    #[clap(long = "force", global(true))]
     pub force: bool,
     /// Skip verifying migration checksums.
     #[clap(long, alias = "no-verify-checksum", global(true))]
@@ -89,13 +89,13 @@ pub enum Operation {
     ///
     /// This does not apply nor revert any migrations, and
     /// only overrides migration status.
-    #[clap(visible_aliases = &["set"])]
-    Force {
+    #[clap(visible_aliases = &["override"])]
+    Set {
         /// Forcibly set the migration with the given name.
-        #[clap(conflicts_with = "version", required_unless_present("version"))]
+        #[clap(long, conflicts_with = "version", required_unless_present("version"))]
         name: Option<String>,
         /// Forcibly set the migration with the given version.
-        #[clap(conflicts_with = "name", required_unless_present("name"))]
+        #[clap(long, conflicts_with = "name", required_unless_present("name"))]
         version: Option<u64>,
     },
     /// Verify migrations and print errors.
@@ -178,7 +178,7 @@ pub fn run_parsed<DB>(
             let env_path = cwd.join(".env");
             if env_path.is_file() {
                 tracing::info!(path = ?env_path, ".env file found");
-                if let Err(err) = dotenv::from_path(&env_path) {
+                if let Err(err) = dotenvy::from_path(&env_path) {
                     tracing::warn!(path = ?env_path, error = %err, "failed to load .env file");
                 }
             }
@@ -208,7 +208,7 @@ where
             let migrator = setup_migrator(&migrate, migrations).await;
             revert(&migrate, migrator, name.as_deref(), *version).await;
         }
-        Operation::Force { name, version } => {
+        Operation::Set { name, version } => {
             let migrator = setup_migrator(&migrate, migrations).await;
             force(&migrate, migrator, name.as_deref(), *version).await;
         }
@@ -235,7 +235,7 @@ where
     DB: Database,
     DB::Connection: db::Migrations,
 {
-    match migrator.check_migrations().await {
+    match migrator.verify().await {
         Ok(_) => {
             tracing::info!("No issues found");
         }
@@ -312,14 +312,14 @@ fn add(
         if let Err(error) = fs::write(
             migrations_path.join(&up_filename),
             &format!(
-                r#"use sqlx::{{{ty}, Transaction}};
+                r#"use sqlx::{{{ty}}};
 use sqlx_migrate::prelude::*;
 
-/// Executes migration `{name}` in the given transaction.
+/// Executes migration `{name}` in the given migration context.
 //
 // Do not modify the function name.
 // Do not modify the signature with the exception of the SQLx database type.
-pub async fn {name}(tx: &mut Transaction<'_, {ty}>) -> Result<(), MigrationError> {{
+pub async fn {name}(mut ctx: MigrationContext<'_, {ty}>) -> Result<(), MigrationError> {{
     // write your migration operations here
     todo!()
 }}
@@ -338,14 +338,14 @@ pub async fn {name}(tx: &mut Transaction<'_, {ty}>) -> Result<(), MigrationError
             if let Err(error) = fs::write(
                 migrations_path.join(&down_filename),
                 &format!(
-                    r#"use sqlx::{{{ty}, Transaction}};
+                    r#"use sqlx::{{{ty}}};
 use sqlx_migrate::prelude::*;
 
-/// Reverts migration `{name}` in the given transaction.
+/// Reverts migration `{name}` in the given migration context.
 //
 // Do not modify the function name.
 // Do not modify the signature with the exception of the SQLx database type.
-pub async fn revert_{name}(tx: &mut Transaction<'_, {ty}>) -> Result<(), MigrationError> {{
+pub async fn revert_{name}(mut ctx: MigrationContext<'_, {ty}>) -> Result<(), MigrationError> {{
     // write your revert operations here
     todo!()
 }}
@@ -422,7 +422,7 @@ async fn revert<DB>(
     DB::Connection: db::Migrations,
 {
     if !migrate.force {
-        tracing::error!("the `--do-as-i-say` or `--force` flag is required for this operation");
+        tracing::error!("the `--force` flag is required for this operation");
         process::exit(1);
     }
 
@@ -516,7 +516,7 @@ where
 
         match &status.applied {
             Some(applied) => {
-                status.checksum == *applied.checksum
+                status.checksum_ok
                     && status.name == applied.name
                     && status.version == applied.version
             }
@@ -595,11 +595,11 @@ fn print_summary(summary: &MigrationSummary) {
             if new >= old {
                 Cell::new((new - old).to_string()).set_alignment(CellAlignment::Center)
             } else {
-                "".into()
+                Cell::new("0").set_alignment(CellAlignment::Center)
             }
         }
         (None, Some(new)) => Cell::new(new.to_string()).set_alignment(CellAlignment::Center),
-        (_, None) => "".into(),
+        (_, None) => Cell::new("0").set_alignment(CellAlignment::Center),
     });
 
     s.push(match (summary.old_version, summary.new_version) {
@@ -607,11 +607,11 @@ fn print_summary(summary: &MigrationSummary) {
             if new <= old {
                 Cell::new((old - new).to_string()).set_alignment(CellAlignment::Center)
             } else {
-                "".into()
+                Cell::new("0").set_alignment(CellAlignment::Center)
             }
         }
         (Some(old), None) => Cell::new(old.to_string()).set_alignment(CellAlignment::Center),
-        (None, _) => "".into(),
+        (None, _) => Cell::new("0").set_alignment(CellAlignment::Center),
     });
 
     table.add_row(s);
@@ -691,7 +691,9 @@ fn setup_logging(migrate: &Migrate) {
 
     let env_filter = match EnvFilter::try_from_default_env() {
         Ok(f) => f,
-        Err(_) => EnvFilter::default().add_directive(tracing::Level::INFO.into()),
+        Err(_) => EnvFilter::default()
+            .add_directive(tracing::Level::INFO.into())
+            .add_directive("sqlx::postgres::notice=error".parse().unwrap()),
     };
 
     if verbose {
