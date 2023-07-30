@@ -16,15 +16,13 @@ pub use build_rs::generate;
 pub fn migration_modules(migrations_path: &Path) -> TokenStream {
     assert!(
         migrations_path.is_dir(),
-        "migrations path must be a directory ({:?})",
-        migrations_path
+        "migrations path must be a directory ({migrations_path:?})",
     );
 
     let mut modules = quote! {};
 
     let mut files = fs::read_dir(migrations_path)
         .unwrap()
-        .into_iter()
         .map(Result::unwrap)
         .filter(|file| {
             let file_path = file.path();
@@ -85,7 +83,7 @@ pub fn migration_modules(migrations_path: &Path) -> TokenStream {
 
         let file_path_str = file_path.to_string_lossy().to_string();
 
-        let docstr = format!("Created at {}.", date);
+        let docstr = format!(" Created at {date}.");
 
         if let MigrationKind::Up = kind {
             version += 1;
@@ -146,8 +144,7 @@ struct Migration {
 pub fn migrations(db: DatabaseType, migrations_path: &Path) -> TokenStream {
     assert!(
         migrations_path.is_dir(),
-        "migrations path must be a directory ({:?})",
-        migrations_path
+        "migrations path must be a directory ({migrations_path:?})",
     );
 
     // Migrations by their name.
@@ -217,7 +214,7 @@ pub fn migrations(db: DatabaseType, migrations_path: &Path) -> TokenStream {
                     MigrationSourceKind::Sql => {
                         mig.up_fn = Some(quote! {
                             use sqlx::Executor;
-                            let mut ctx: sqlx_migrate::prelude::MigrationContext<sqlx::#db_ident> = ctx;
+                            let ctx: &mut sqlx_migrate::prelude::MigrationContext<sqlx::#db_ident> = ctx;
                             ctx.tx().execute(include_str!(#file_path_str)).await?;
                             Ok(())
                         });
@@ -249,7 +246,7 @@ pub fn migrations(db: DatabaseType, migrations_path: &Path) -> TokenStream {
                     MigrationSourceKind::Sql => {
                         mig.down_fn = Some(quote! {
                             use sqlx::Executor;
-                            let mut ctx: sqlx_migrate::prelude::MigrationContext<sqlx::#db_ident> = ctx;
+                            let ctx: &mut sqlx_migrate::prelude::MigrationContext<sqlx::#db_ident> = ctx;
                             ctx.tx().execute(include_str!(#file_path_str)).await?;
                             Ok(())
                         });
@@ -319,14 +316,12 @@ struct MigrationSplit {
 fn split_name(file_name: &str, file_name_lower: &str) -> MigrationSplit {
     assert!(
         file_name.is_ascii(),
-        "file name must be ASCII ({})",
-        file_name
+        "file name must be ASCII ({file_name})",
     );
 
     assert!(
         file_name.len() >= MIG_DATE_PREFIX_LEN,
-        "invalid migration file name ({})",
-        file_name
+        "invalid migration file name ({file_name})",
     );
 
     let date: u64 = file_name[..MIG_DATE_PREFIX_LEN - 1].parse().unwrap();

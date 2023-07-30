@@ -7,7 +7,7 @@ use sqlx_migrate::prelude::*;
 // Do not modify the function name.
 // Do not modify the signature with the exception of the SQLx database type.
 pub async fn revert_plush_sharks(
-    mut ctx: MigrationContext<'_, Postgres>,
+    ctx: &mut MigrationContext<Postgres>,
 ) -> Result<(), MigrationError> {
     let mut m = barrel::Migration::new();
     m.change_table("users", |t| {

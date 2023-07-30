@@ -6,9 +6,9 @@ mod postgres;
 #[cfg(feature = "sqlite")]
 mod sqlite;
 
-use std::{borrow::Cow, time::Duration};
 use async_trait::async_trait;
-use sqlx::{Connection, Transaction};
+use sqlx::Connection;
+use std::{borrow::Cow, time::Duration};
 
 #[derive(Debug, Clone)]
 pub struct AppliedMigration<'m> {
@@ -43,17 +43,14 @@ pub trait Migrations: Connection {
 
     #[must_use]
     async fn add_migration(
+        &mut self,
         table_name: &str,
         migration: AppliedMigration<'static>,
-        tx: &mut Transaction<'_, Self::Database>,
     ) -> Result<(), sqlx::Error>;
 
     #[must_use]
-    async fn remove_migration(
-        table_name: &str,
-        version: u64,
-        tx: &mut Transaction<'_, Self::Database>,
-    ) -> Result<(), sqlx::Error>;
+    async fn remove_migration(&mut self, table_name: &str, version: u64)
+        -> Result<(), sqlx::Error>;
 
     #[must_use]
     async fn clear_migrations(&mut self, table_name: &str) -> Result<(), sqlx::Error>;

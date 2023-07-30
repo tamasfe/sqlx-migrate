@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.7.0
+
+### Features
+
+- Added `prettyplease` for formatting generated code.
+
+### Other
+
+- Updated dependencies, notably sqlx `0.7` and clap `4` for the CLI.
+- Reworked some of the traits and internals due to the changes in sqlx `0.7.0`.
+- Reworked API so that migrations receive a `&mut MigrationContext` without additonal lifetimes. This required that we manage our own transactions instead of using sqlx's own transaction type.
+- Added the `state` crate for context "extension" management instead of custom type-map implementation.
+- Removed all `unsafe` code as it is not needed anymore.
+
 ## 0.6.0
 
 ### Features

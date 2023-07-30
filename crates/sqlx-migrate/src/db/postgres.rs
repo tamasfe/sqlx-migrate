@@ -1,7 +1,7 @@
 use std::{borrow::Cow, time::Duration};
 
 use async_trait::async_trait;
-use sqlx::{query, query_as, query_scalar, PgConnection, Postgres};
+use sqlx::{query, query_as, query_scalar, PgConnection};
 
 use super::AppliedMigration;
 
@@ -90,9 +90,9 @@ impl super::Migrations for sqlx::PgConnection {
     }
 
     async fn add_migration(
+        &mut self,
         table_name: &str,
         migration: super::AppliedMigration<'static>,
-        tx: &mut sqlx::Transaction<'_, Postgres>,
     ) -> Result<(), sqlx::Error> {
         query(&format!(
             r#"
@@ -105,20 +105,20 @@ impl super::Migrations for sqlx::PgConnection {
         .bind(&*migration.name.clone())
         .bind(&*migration.checksum.clone())
         .bind(migration.execution_time.as_nanos() as i64)
-        .execute(tx)
+        .execute(self)
         .await?;
 
         Ok(())
     }
 
     async fn remove_migration(
+        &mut self,
         table_name: &str,
         version: u64,
-        tx: &mut sqlx::Transaction<'_, Postgres>,
     ) -> Result<(), sqlx::Error> {
         query(&format!(r#"DELETE FROM {} WHERE version = $1"#, table_name))
             .bind(version as i64)
-            .execute(tx)
+            .execute(self)
             .await?;
 
         Ok(())

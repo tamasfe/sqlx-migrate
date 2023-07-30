@@ -6,11 +6,11 @@
     unused_variables
 )]
 use crate::{db, prelude::*, DatabaseType, DEFAULT_MIGRATIONS_TABLE};
-use clap::StructOpt;
+use clap::Parser;
 use comfy_table::{Cell, CellAlignment, ContentArrangement, Table};
 use filetime::FileTime;
 use regex::Regex;
-use sqlx::{ConnectOptions, Database};
+use sqlx::{ConnectOptions, Database, Executor};
 use std::{fs, io, path::Path, process, str::FromStr, time::Duration};
 use time::{format_description, OffsetDateTime};
 use tracing_subscriber::{
@@ -123,12 +123,8 @@ pub enum Operation {
             long = "database",
             visible_aliases = &["db"],
             aliases = &["type"],
-            possible_values = &[
-                "postgres",
-                "sqlite",
-                "any"
-            ],
-            default_value = "any"
+            default_value = "postgres",
+            value_enum
         )]
         ty: DatabaseType,
         /// The name of the migration.
@@ -151,25 +147,27 @@ pub enum Operation {
 /// This functon assumes that it has control over the entire application.
 ///
 /// It will happily alter global state (tracing), panic, or terminate the process.
-pub fn run<DB>(
+pub fn run<Db>(
     migrations_path: impl AsRef<Path>,
-    migrations: impl IntoIterator<Item = Migration<DB>>,
+    migrations: impl IntoIterator<Item = Migration<Db>>,
 ) where
-    DB: Database,
-    DB::Connection: db::Migrations,
+    Db: Database,
+    Db::Connection: db::Migrations,
+    for<'a> &'a mut Db::Connection: Executor<'a>,
 {
     run_parsed(Migrate::parse(), migrations_path, migrations);
 }
 
 /// Same as [`run`], but allows for parsing and inspecting [`Migrate`] beforehand.
 #[allow(clippy::missing_panics_doc)]
-pub fn run_parsed<DB>(
+pub fn run_parsed<Db>(
     migrate: Migrate,
     migrations_path: impl AsRef<Path>,
-    migrations: impl IntoIterator<Item = Migration<DB>>,
+    migrations: impl IntoIterator<Item = Migration<Db>>,
 ) where
-    DB: Database,
-    DB::Connection: db::Migrations,
+    Db: Database,
+    Db::Connection: db::Migrations,
+    for<'a> &'a mut Db::Connection: Executor<'a>,
 {
     setup_logging(&migrate);
 
@@ -194,10 +192,11 @@ pub fn run_parsed<DB>(
         .block_on(execute(migrate, migrations_path.as_ref(), migrations));
 }
 
-async fn execute<DB>(migrate: Migrate, migrations_path: &Path, migrations: Vec<Migration<DB>>)
+async fn execute<Db>(migrate: Migrate, migrations_path: &Path, migrations: Vec<Migration<Db>>)
 where
-    DB: Database,
-    DB::Connection: db::Migrations,
+    Db: Database,
+    Db::Connection: db::Migrations,
+    for<'a> &'a mut Db::Connection: Executor<'a>,
 {
     match &migrate.operation {
         Operation::Migrate { name, version } => {
@@ -230,10 +229,11 @@ where
     }
 }
 
-async fn check<DB>(_migrate: &Migrate, mut migrator: Migrator<DB>)
+async fn check<Db>(_migrate: &Migrate, migrator: Migrator<Db>)
 where
-    DB: Database,
-    DB::Connection: db::Migrations,
+    Db: Database,
+    Db::Connection: db::Migrations,
+    for<'a> &'a mut Db::Connection: Executor<'a>,
 {
     match migrator.verify().await {
         Ok(_) => {
@@ -278,10 +278,9 @@ fn add(
 
         if let Err(error) = fs::write(
             migrations_path.join(&up_filename),
-            &format!(
-                r#"-- Migration SQL for {}
+            format!(
+                r#"-- Migration SQL for {name}
 "#,
-                name
             ),
         ) {
             tracing::error!(error = %error, path = ?migrations_path.join(&up_filename), "failed to write file");
@@ -292,10 +291,9 @@ fn add(
             let down_filename = format!("{}_{}.revert.sql", &now_formatted, name);
             if let Err(error) = fs::write(
                 migrations_path.join(&down_filename),
-                &format!(
-                    r#"-- Revert SQL for {}
+                format!(
+                    r#"-- Revert SQL for {name}
 "#,
-                    name
                 ),
             ) {
                 tracing::error!(error = %error, path = ?migrations_path.join(&down_filename), "failed to write file");
@@ -311,21 +309,19 @@ fn add(
 
         if let Err(error) = fs::write(
             migrations_path.join(&up_filename),
-            &format!(
-                r#"use sqlx::{{{ty}}};
+            format!(
+                r#"use sqlx::{{{sqlx_type}}};
 use sqlx_migrate::prelude::*;
 
 /// Executes migration `{name}` in the given migration context.
 //
 // Do not modify the function name.
 // Do not modify the signature with the exception of the SQLx database type.
-pub async fn {name}(mut ctx: MigrationContext<'_, {ty}>) -> Result<(), MigrationError> {{
+pub async fn {name}(mut ctx: MigrationContext<'_, {sqlx_type}>) -> Result<(), MigrationError> {{
     // write your migration operations here
     todo!()
 }}
 "#,
-                name = name,
-                ty = sqlx_type
             ),
         ) {
             tracing::error!(error = %error, path = ?migrations_path.join(&up_filename), "failed to write file");
@@ -337,21 +333,19 @@ pub async fn {name}(mut ctx: MigrationContext<'_, {ty}>) -> Result<(), Migration
 
             if let Err(error) = fs::write(
                 migrations_path.join(&down_filename),
-                &format!(
-                    r#"use sqlx::{{{ty}}};
+                format!(
+                    r#"use sqlx::{{{sqlx_type}}};
 use sqlx_migrate::prelude::*;
 
 /// Reverts migration `{name}` in the given migration context.
 //
 // Do not modify the function name.
 // Do not modify the signature with the exception of the SQLx database type.
-pub async fn revert_{name}(mut ctx: MigrationContext<'_, {ty}>) -> Result<(), MigrationError> {{
+pub async fn revert_{name}(mut ctx: MigrationContext<'_, {sqlx_type}>) -> Result<(), MigrationError> {{
     // write your revert operations here
     todo!()
 }}
 "#,
-                    name = name,
-                    ty = sqlx_type
                 ),
             ) {
                 tracing::error!(error = %error, path = ?migrations_path.join(&down_filename), "failed to write file");
@@ -365,14 +359,15 @@ pub async fn revert_{name}(mut ctx: MigrationContext<'_, {ty}>) -> Result<(), Mi
     }
 }
 
-async fn do_migrate<DB>(
+async fn do_migrate<Db>(
     _migrate: &Migrate,
-    mut migrator: Migrator<DB>,
+    migrator: Migrator<Db>,
     name: Option<&str>,
     version: Option<u64>,
 ) where
-    DB: Database,
-    DB::Connection: db::Migrations,
+    Db: Database,
+    Db::Connection: db::Migrations,
+    for<'a> &'a mut Db::Connection: Executor<'a>,
 {
     let version = match version {
         Some(v) => Some(v),
@@ -412,14 +407,15 @@ async fn do_migrate<DB>(
     }
 }
 
-async fn revert<DB>(
+async fn revert<Db>(
     migrate: &Migrate,
-    mut migrator: Migrator<DB>,
+    migrator: Migrator<Db>,
     name: Option<&str>,
     version: Option<u64>,
 ) where
-    DB: Database,
-    DB::Connection: db::Migrations,
+    Db: Database,
+    Db::Connection: db::Migrations,
+    for<'a> &'a mut Db::Connection: Executor<'a>,
 {
     if !migrate.force {
         tracing::error!("the `--force` flag is required for this operation");
@@ -464,14 +460,15 @@ async fn revert<DB>(
     }
 }
 
-async fn force<DB>(
+async fn force<Db>(
     migrate: &Migrate,
-    mut migrator: Migrator<DB>,
+    migrator: Migrator<Db>,
     name: Option<&str>,
     version: Option<u64>,
 ) where
-    DB: Database,
-    DB::Connection: db::Migrations,
+    Db: Database,
+    Db::Connection: db::Migrations,
+    for<'a> &'a mut Db::Connection: Executor<'a>,
 {
     if !migrate.force {
         tracing::error!("the `--do-as-i-say` or `--force` flag is required for this operation");
@@ -504,10 +501,11 @@ async fn force<DB>(
     }
 }
 
-async fn log_status<DB>(_migrate: &Migrate, mut migrator: Migrator<DB>)
+async fn log_status<Db>(_migrate: &Migrate, migrator: Migrator<Db>)
 where
-    DB: Database,
-    DB::Connection: db::Migrations,
+    Db: Database,
+    Db::Connection: db::Migrations,
+    for<'a> &'a mut Db::Connection: Executor<'a>,
 {
     fn mig_ok(status: &MigrationStatus) -> bool {
         if status.missing_local {
@@ -616,13 +614,14 @@ fn print_summary(summary: &MigrationSummary) {
 
     table.add_row(s);
 
-    eprintln!("{}", table);
+    eprintln!("{table}");
 }
 
-async fn setup_migrator<DB>(migrate: &Migrate, migrations: Vec<Migration<DB>>) -> Migrator<DB>
+async fn setup_migrator<Db>(migrate: &Migrate, migrations: Vec<Migration<Db>>) -> Migrator<Db>
 where
-    DB: Database,
-    DB::Connection: db::Migrations,
+    Db: Database,
+    Db::Connection: db::Migrations,
+    for<'a> &'a mut Db::Connection: Executor<'a>,
 {
     let db_url = match &migrate.database_url {
         Some(s) => s.clone(),
@@ -639,7 +638,7 @@ where
     };
 
     let mut options =
-        match db_url.parse::<<<DB as Database>::Connection as sqlx::Connection>::Options>() {
+        match db_url.parse::<<<Db as Database>::Connection as sqlx::Connection>::Options>() {
             Ok(opts) => opts,
             Err(err) => {
                 tracing::error!(error = %err, "invalid database URL");
@@ -648,10 +647,11 @@ where
         };
 
     if migrate.log_statements {
-        options.log_statements("INFO".parse().unwrap());
-        options.log_slow_statements("WARN".parse().unwrap(), Duration::from_secs(1));
+        options = options
+            .log_statements("INFO".parse().unwrap())
+            .log_slow_statements("WARN".parse().unwrap(), Duration::from_secs(1));
     } else {
-        options.disable_statement_logging();
+        options = options.disable_statement_logging();
     }
 
     match Migrator::connect_with(&options).await {

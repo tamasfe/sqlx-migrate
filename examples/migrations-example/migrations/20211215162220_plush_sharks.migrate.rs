@@ -11,7 +11,7 @@ use sqlx_migrate::prelude::*;
 //
 // Do not modify the function name.
 // Do not modify the signature with the exception of the SQLx database type.
-pub async fn plush_sharks(mut ctx: MigrationContext<'_, Postgres>) -> Result<(), MigrationError> {
+pub async fn plush_sharks(ctx: &mut MigrationContext<Postgres>) -> Result<(), MigrationError> {
     let users_with_sharks: Vec<(i32,)> = query_as(
         r#"
         SELECT

@@ -1,6 +1,6 @@
 [package]
 name = "sqlx-migrate"
-version = "0.6.0"
+version = "0.7.0"
 edition = "2021"
 description = "A database migration micro-framework based on SQLx"
 repository = "https://github.com/tamasfe/sqlx-migrate"
@@ -18,34 +18,36 @@ async-trait = "0.1"
 crc = "3.0.0"
 futures-core = "0.3"
 humantime = "2.1.0"
-sqlx = { version = "0.6.0" }
+sqlx = { version = "0.7.0" }
 thiserror = "1"
 tracing = "0.1"
-itertools = "0.10"
+itertools = "0.11.0"
 sha2 = { version = "0.10" }
 
 # Source generation dependencies
 proc-macro2 = { version = "1", optional = true }
 quote = { version = "1", optional = true }
-syn = { version = "1", optional = true }
+syn = { version = "2", optional = true }
 walkdir = { version = "2.3", optional = true }
 
 # CLI dependencies
-clap = { version = "3.0.0", features = ["derive"], optional = true }
+clap = { version = "4.3.0", features = ["derive"], optional = true }
 tracing-subscriber = { version = "0.3.3", features = [
     "env-filter",
 ], optional = true }
 atty = { version = "0.2.14", optional = true }
 tokio = { version = "1.14.0", features = ["rt"], optional = true }
-comfy-table = { version = "6.0.0", optional = true }
+comfy-table = { version = "7.0.1", optional = true }
 time = { version = "0.3", optional = true, features = ["formatting"] }
 regex = { version = "1.5", optional = true }
 filetime = { version = "0.2", optional = true }
 dotenvy = { version = "0.15", optional = true }
+prettyplease = { version = "0.2.12", optional = true }
+state = "0.6.0"
 
 [dev-dependencies]
 tokio = { version = "1.14.0", features = ["rt-multi-thread", "macros"] }
-sqlx = { version = "0.6.0", features = ["runtime-tokio-rustls"] }
+sqlx = { version = "0.7.0", features = ["runtime-tokio-rustls"] }
 
 [features]
 default = []
@@ -54,6 +56,7 @@ generate = [
     "dep:quote",
     "dep:syn",
     "dep:walkdir",
+    "dep:prettyplease",
 ]
 
 cli = [

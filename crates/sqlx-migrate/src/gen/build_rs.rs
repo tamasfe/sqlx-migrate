@@ -1,12 +1,12 @@
 use crate::DatabaseType;
 use proc_macro2::{Ident, Span};
-use quote::quote;
 use std::{fs, path::Path};
+use syn::parse_quote;
 use walkdir::WalkDir;
 
 /// Generate Rust code from a migrations directory.
 /// It is meant to be used in `build.rs`.
-/// 
+///
 /// # Panics
 ///
 /// This function is meant to be used in `build.rs` and will panic on errors.
@@ -28,7 +28,7 @@ pub fn generate(
 
     fs::write(
         module_path,
-        quote! {
+        prettyplease::unparse(&parse_quote! {
             pub use sqlx_migrate::prelude::*;
 
             #modules
@@ -38,19 +38,14 @@ pub fn generate(
                 #migrations
             }
 
-        }
-        .to_string(),
+        }),
     )
     .unwrap();
 }
 
 fn cargo_rerun(dir: &Path) {
     for entry in WalkDir::new(dir) {
-        let entry = match entry {
-            Ok(e) => e,
-            Err(_) => continue,
-        };
-
+        let Ok(entry) = entry else { continue };
         println!("cargo:rerun-if-changed={}", entry.path().to_string_lossy());
     }
 }

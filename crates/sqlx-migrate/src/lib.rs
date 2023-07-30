@@ -16,17 +16,16 @@
     clippy::module_name_repetitions
 )]
 
-use context::Extensions;
 use db::{AppliedMigration, Migrations};
 use futures_core::future::LocalBoxFuture;
 use itertools::{EitherOrBoth, Itertools};
 use sha2::{Digest, Sha256};
-use sqlx::{ConnectOptions, Connection, Database, Pool};
+use sqlx::{ConnectOptions, Connection, Database, Executor, Pool};
+use state::TypeMap;
 use std::{
-    any::TypeId,
     borrow::Cow,
-    cell::UnsafeCell,
     str::FromStr,
+    sync::Arc,
     time::{Duration, Instant},
 };
 
@@ -49,11 +48,8 @@ mod gen;
 #[cfg_attr(feature = "_docs", doc(cfg(feature = "generate")))]
 pub use gen::generate;
 
-type MigrationFn<DB> = Box<
-    dyn for<'future> Fn(
-        MigrationContext<'future, DB>,
-    ) -> LocalBoxFuture<'future, Result<(), MigrationError>>,
->;
+type MigrationFn<DB> =
+    Box<dyn Fn(&mut MigrationContext<DB>) -> LocalBoxFuture<Result<(), MigrationError>>>;
 
 /// The default migrations table used by all migrators.
 pub const DEFAULT_MIGRATIONS_TABLE: &str = "_sqlx_migrations";
@@ -103,10 +99,7 @@ impl<DB: Database> Migration<DB> {
     /// and migration function.
     pub fn new(
         name: impl Into<Cow<'static, str>>,
-        up: impl for<'future> Fn(
-                MigrationContext<'future, DB>,
-            ) -> LocalBoxFuture<'future, Result<(), MigrationError>>
-            + 'static,
+        up: impl Fn(&mut MigrationContext<DB>) -> LocalBoxFuture<Result<(), MigrationError>> + 'static,
     ) -> Self {
         Self {
             name: name.into(),
@@ -119,10 +112,7 @@ impl<DB: Database> Migration<DB> {
     #[must_use]
     pub fn reversible(
         mut self,
-        down: impl for<'future> Fn(
-                MigrationContext<'future, DB>,
-            ) -> LocalBoxFuture<'future, Result<(), MigrationError>>
-            + 'static,
+        down: impl Fn(&mut MigrationContext<DB>) -> LocalBoxFuture<Result<(), MigrationError>> + 'static,
     ) -> Self {
         self.down = Some(Box::new(down));
         self
@@ -132,10 +122,7 @@ impl<DB: Database> Migration<DB> {
     #[must_use]
     pub fn revertible(
         self,
-        down: impl for<'future> Fn(
-                MigrationContext<'future, DB>,
-            ) -> LocalBoxFuture<'future, Result<(), MigrationError>>
-            + 'static,
+        down: impl Fn(&mut MigrationContext<DB>) -> LocalBoxFuture<Result<(), MigrationError>> + 'static,
     ) -> Self {
         self.reversible(down)
     }
@@ -213,31 +200,32 @@ impl<DB: Database> PartialEq for Migration<DB> {
 /// }
 /// ```
 #[must_use]
-pub struct Migrator<DB>
+pub struct Migrator<Db>
 where
-    DB: Database,
-    DB::Connection: db::Migrations,
+    Db: Database,
+    Db::Connection: db::Migrations,
 {
     options: MigratorOptions,
-    conn: DB::Connection,
+    conn: Db::Connection,
     table: Cow<'static, str>,
-    migrations: Vec<Migration<DB>>,
-    extensions: UnsafeCell<Extensions>,
+    migrations: Vec<Migration<Db>>,
+    extensions: Arc<TypeMap!(Send + Sync)>,
 }
 
-impl<DB> Migrator<DB>
+impl<Db> Migrator<Db>
 where
-    DB: Database,
-    DB::Connection: db::Migrations,
+    Db: Database,
+    Db::Connection: db::Migrations,
+    for<'a> &'a mut Db::Connection: Executor<'a>,
 {
     /// Create a new migrator that uses an existing connection.
-    pub fn new(conn: DB::Connection) -> Self {
+    pub fn new(conn: Db::Connection) -> Self {
         Self {
             options: MigratorOptions::default(),
             conn,
             table: Cow::Borrowed(DEFAULT_MIGRATIONS_TABLE),
             migrations: Vec::default(),
-            extensions: UnsafeCell::new(Extensions::default()),
+            extensions: Arc::new(<TypeMap![Send + Sync]>::new()),
         }
     }
 
@@ -250,15 +238,23 @@ where
     ///
     /// An error is returned on connection failure.
     pub async fn connect(url: &str) -> Result<Self, sqlx::Error> {
-        let mut opts: <<DB as Database>::Connection as Connection>::Options = url.parse()?;
-        opts.disable_statement_logging();
+        let mut opts: <<Db as Database>::Connection as Connection>::Options = url.parse()?;
+        opts = opts.disable_statement_logging();
+
+        let mut conn = Db::Connection::connect_with(&opts).await?;
+        conn.execute(
+            r#"--sql
+            SET client_min_messages TO WARNING;
+            "#,
+        )
+        .await?;
 
         Ok(Self {
             options: MigratorOptions::default(),
-            conn: DB::Connection::connect_with(&opts).await?,
+            conn,
             table: Cow::Borrowed(DEFAULT_MIGRATIONS_TABLE),
             migrations: Vec::default(),
-            extensions: UnsafeCell::new(Extensions::default()),
+            extensions: Arc::new(<TypeMap![Send + Sync]>::new()),
         })
     }
 
@@ -268,14 +264,22 @@ where
     ///
     /// An error is returned on connection failure.
     pub async fn connect_with(
-        options: &<DB::Connection as Connection>::Options,
+        options: &<Db::Connection as Connection>::Options,
     ) -> Result<Self, sqlx::Error> {
+        let mut conn = Db::Connection::connect_with(options).await?;
+        conn.execute(
+            r#"--sql
+            SET client_min_messages TO WARNING;
+            "#,
+        )
+        .await?;
+
         Ok(Self {
             options: MigratorOptions::default(),
-            conn: DB::Connection::connect_with(options).await?,
+            conn,
             table: Cow::Borrowed(DEFAULT_MIGRATIONS_TABLE),
             migrations: Vec::default(),
-            extensions: UnsafeCell::new(Extensions::default()),
+            extensions: Arc::new(<TypeMap![Send + Sync]>::new()),
         })
     }
 
@@ -286,15 +290,21 @@ where
     /// # Errors
     ///
     /// An error is returned on connection failure.
-    pub async fn connect_with_pool(pool: &Pool<DB>) -> Result<Self, sqlx::Error> {
-        let conn = pool.acquire().await?;
+    pub async fn connect_with_pool(pool: &Pool<Db>) -> Result<Self, sqlx::Error> {
+        let mut conn = pool.acquire().await?;
+        conn.execute(
+            r#"--sql
+            SET client_min_messages TO WARNING;
+            "#,
+        )
+        .await?;
 
         Ok(Self {
             options: MigratorOptions::default(),
             conn: conn.detach(),
             table: Cow::Borrowed(DEFAULT_MIGRATIONS_TABLE),
             migrations: Vec::default(),
-            extensions: UnsafeCell::new(Extensions::default()),
+            extensions: Arc::new(<TypeMap![Send + Sync]>::new()),
         })
     }
 
@@ -306,8 +316,8 @@ where
     }
 
     /// Add migrations to the migrator.
-    pub fn add_migrations(&mut self, migrations: impl IntoIterator<Item = Migration<DB>>) {
-        self.migrations.extend(migrations.into_iter());
+    pub fn add_migrations(&mut self, migrations: impl IntoIterator<Item = Migration<Db>>) {
+        self.migrations.extend(migrations);
     }
 
     /// Override the migrator's options.
@@ -316,33 +326,29 @@ where
     }
 
     /// With an extension that is available to the migrations.
-    pub fn with<T: Send + Sync + 'static>(mut self, value: T) -> Self {
+    pub fn with<T: Send + Sync + 'static>(&mut self, value: T) -> &mut Self {
         self.set(value);
         self
     }
 
     /// Add an extension that is available to the migrations.
     pub fn set<T: Send + Sync + 'static>(&mut self, value: T) {
-        // SAFETY: Self is mutably borrowed.
-        unsafe {
-            (*self.extensions.get())
-                .map
-                .insert(TypeId::of::<T>(), Box::new(value));
-        }
+        self.extensions.set(value);
     }
 
     /// List all local migrations.
     ///
     /// To list all migrations, use [`Migrator::status`].
-    pub fn local_migrations(&self) -> &[Migration<DB>] {
+    pub fn local_migrations(&self) -> &[Migration<Db>] {
         &self.migrations
     }
 }
 
-impl<DB> Migrator<DB>
+impl<Db> Migrator<Db>
 where
-    DB: Database,
-    DB::Connection: db::Migrations,
+    Db: Database,
+    Db::Connection: db::Migrations,
+    for<'a> &'a mut Db::Connection: Executor<'a>,
 {
     /// Apply all migrations to the given version.
     ///
@@ -353,7 +359,8 @@ where
     ///
     /// Whenever a migration fails, and error is returned and no database
     /// changes will be made.
-    pub async fn migrate(&mut self, target_version: u64) -> Result<MigrationSummary, Error> {
+    #[allow(clippy::missing_panics_doc)]
+    pub async fn migrate(mut self, target_version: u64) -> Result<MigrationSummary, Error> {
         self.local_migration(target_version)?;
         self.conn.ensure_migrations_table(&self.table).await?;
 
@@ -363,9 +370,10 @@ where
 
         let to_apply = self.migrations.iter();
 
-        let tx = UnsafeCell::new(self.conn.begin().await?);
-
         let db_version = db_migrations.len() as _;
+
+        let mut conn = self.conn;
+        conn.execute("BEGIN").await?;
 
         for (idx, mig) in to_apply.enumerate() {
             let mig_version = idx as u64 + 1;
@@ -386,7 +394,7 @@ where
                 "applying migration"
             );
 
-            let hasher = UnsafeCell::new(Sha256::new());
+            let hasher = Sha256::new();
 
             // First we execute the migration with dummy queries,
             // otherwise the checksum will depend on the data
@@ -395,44 +403,39 @@ where
             // This way we miss out on queries that depend on
             // the database context.
             // FIXME: detect this and warn the user.
-            let ctx = MigrationContext {
+            let mut ctx = MigrationContext {
                 hash_only: true,
-                ext: self.extensions.get(),
-                hasher: hasher.get(),
-                tx: tx.get(),
+                ext: self.extensions.clone(),
+                hasher,
+                conn,
             };
 
-            (*mig.up)(ctx).await.map_err(|error| Error::Migration {
-                name: mig.name.clone(),
-                version: mig_version,
-                error,
-            })?;
+            (*mig.up)(&mut ctx)
+                .await
+                .map_err(|error| Error::Migration {
+                    name: mig.name.clone(),
+                    version: mig_version,
+                    error,
+                })?;
 
-            let checksum = hasher.into_inner().finalize().to_vec();
+            let checksum = std::mem::take(&mut ctx.hasher).finalize().to_vec();
 
-            let hasher = UnsafeCell::new(Sha256::new());
+            ctx.hash_only = false;
 
-            let ctx = MigrationContext {
-                hash_only: false,
-                ext: self.extensions.get(),
-                hasher: hasher.get(),
-                tx: tx.get(),
-            };
-
-            (*mig.up)(ctx).await.map_err(|error| Error::Migration {
-                name: mig.name.clone(),
-                version: mig_version,
-                error,
-            })?;
+            (*mig.up)(&mut ctx)
+                .await
+                .map_err(|error| Error::Migration {
+                    name: mig.name.clone(),
+                    version: mig_version,
+                    error,
+                })?;
 
             let execution_time = start.elapsed();
 
             if self.options.verify_checksums {
                 if let Some(db_mig) = db_migrations.get(idx) {
                     if db_mig.checksum != checksum {
-                        let tx = tx.into_inner();
-
-                        tx.rollback().await?;
+                        ctx.conn.execute("ROLLBACK").await?;
 
                         return Err(Error::ChecksumMismatch {
                             version: mig_version,
@@ -443,20 +446,19 @@ where
                 }
             }
 
-            DB::Connection::add_migration(
-                &self.table,
-                AppliedMigration {
-                    version: mig_version,
-                    name: mig.name.clone(),
-                    checksum: checksum.into(),
-                    execution_time,
-                },
-                // SAFETY: tx was only borrowed in the context
-                // that was passed into the function and no longer
-                // exists.
-                unsafe { &mut *tx.get() },
-            )
-            .await?;
+            ctx.conn
+                .add_migration(
+                    &self.table,
+                    AppliedMigration {
+                        version: mig_version,
+                        name: mig.name.clone(),
+                        checksum: checksum.into(),
+                        execution_time,
+                    },
+                )
+                .await?;
+
+            conn = ctx.conn;
 
             tracing::info!(
                 version = mig_version,
@@ -467,7 +469,7 @@ where
         }
 
         tracing::info!("committing changes");
-        tx.into_inner().commit().await?;
+        conn.execute("COMMIT").await?;
 
         Ok(MigrationSummary {
             old_version: if db_migrations.is_empty() {
@@ -484,15 +486,15 @@ where
     /// # Errors
     ///
     /// Uses [`Migrator::migrate`] internally, errors are propagated.
-    pub async fn migrate_all(&mut self) -> Result<MigrationSummary, Error> {
+    pub async fn migrate_all(self) -> Result<MigrationSummary, Error> {
         if self.migrations.is_empty() {
             return Ok(MigrationSummary {
                 new_version: None,
                 old_version: None,
             });
         }
-
-        self.migrate(self.migrations.len() as _).await
+        let migrations = self.migrations.len() as _;
+        self.migrate(migrations).await
     }
 
     /// Revert all migrations after and including the given version.
@@ -503,7 +505,8 @@ where
     ///
     /// Whenever a migration fails, and error is returned and no database
     /// changes will be made.
-    pub async fn revert(&mut self, target_version: u64) -> Result<MigrationSummary, Error> {
+    #[allow(clippy::missing_panics_doc)]
+    pub async fn revert(mut self, target_version: u64) -> Result<MigrationSummary, Error> {
         self.local_migration(target_version)?;
         self.conn.ensure_migrations_table(&self.table).await?;
 
@@ -521,7 +524,8 @@ where
             .into_iter()
             .rev();
 
-        let tx = UnsafeCell::new(self.conn.begin().await?);
+        let mut conn = self.conn;
+        conn.execute("BEGIN").await?;
 
         for (idx, mig) in to_revert {
             let version = idx as u64 + 1;
@@ -534,18 +538,18 @@ where
                 "reverting migration"
             );
 
-            let hasher = UnsafeCell::new(Sha256::new());
+            let hasher = Sha256::new();
 
-            let ctx = MigrationContext {
+            let mut ctx = MigrationContext {
                 hash_only: false,
-                ext: self.extensions.get(),
-                hasher: hasher.get(),
-                tx: tx.get(),
+                ext: self.extensions.clone(),
+                hasher,
+                conn,
             };
 
             match &mig.down {
                 Some(down) => {
-                    down(ctx).await.map_err(|error| Error::Revert {
+                    down(&mut ctx).await.map_err(|error| Error::Revert {
                         name: mig.name.clone(),
                         version,
                         error,
@@ -562,15 +566,9 @@ where
 
             let execution_time = start.elapsed();
 
-            DB::Connection::remove_migration(
-                &self.table,
-                version,
-                // SAFETY: tx was only borrowed in the context
-                // that was passed into the function and no longer
-                // exists.
-                unsafe { &mut *tx.get() },
-            )
-            .await?;
+            ctx.conn.remove_migration(&self.table, version).await?;
+
+            conn = ctx.conn;
 
             tracing::info!(
                 version,
@@ -581,7 +579,7 @@ where
         }
 
         tracing::info!("committing changes");
-        tx.into_inner().commit().await?;
+        conn.execute("COMMIT").await?;
 
         Ok(MigrationSummary {
             old_version: if db_migrations.is_empty() {
@@ -602,7 +600,7 @@ where
     /// # Errors
     ///
     /// Uses [`Migrator::revert`], any errors will be propagated.
-    pub async fn revert_all(&mut self) -> Result<MigrationSummary, Error> {
+    pub async fn revert_all(self) -> Result<MigrationSummary, Error> {
         self.revert(1).await
     }
 
@@ -621,7 +619,8 @@ where
     /// Truncating the migrations table and applying migrations are done
     /// in separate transactions. As a consequence in some occasions
     /// the migrations table might be cleared and no migrations will be set.
-    pub async fn force_version(&mut self, version: u64) -> Result<MigrationSummary, Error> {
+    #[allow(clippy::missing_panics_doc)]
+    pub async fn force_version(mut self, version: u64) -> Result<MigrationSummary, Error> {
         self.conn.ensure_migrations_table(&self.table).await?;
 
         let db_migrations = self.conn.list_migrations(&self.table).await?;
@@ -648,42 +647,44 @@ where
 
         self.conn.clear_migrations(&self.table).await?;
 
-        let tx = UnsafeCell::new(self.conn.begin().await?);
+        let mut conn = self.conn;
+        conn.execute("BEGIN").await?;
 
         for (idx, mig) in migrations {
             let mig_version = idx as u64 + 1;
 
-            let hasher = UnsafeCell::new(Sha256::new());
+            let hasher = Sha256::new();
 
-            let ctx = MigrationContext {
+            let mut ctx = MigrationContext {
                 hash_only: true,
-                ext: self.extensions.get(),
-                hasher: hasher.get(),
-                tx: tx.get(),
+                ext: self.extensions.clone(),
+                hasher,
+                conn,
             };
 
-            (*mig.up)(ctx).await.map_err(|error| Error::Migration {
-                name: mig.name.clone(),
-                version: mig_version,
-                error,
-            })?;
-
-            let checksum = hasher.into_inner().finalize().to_vec();
-
-            DB::Connection::add_migration(
-                &self.table,
-                AppliedMigration {
-                    version: mig_version,
+            (*mig.up)(&mut ctx)
+                .await
+                .map_err(|error| Error::Migration {
                     name: mig.name.clone(),
-                    checksum: checksum.into(),
-                    execution_time: Duration::default(),
-                },
-                // SAFETY: tx was only borrowed in the context
-                // that was passed into the function and no longer
-                // exists.
-                unsafe { &mut *tx.get() },
-            )
-            .await?;
+                    version: mig_version,
+                    error,
+                })?;
+
+            let checksum = std::mem::take(&mut ctx.hasher).finalize().to_vec();
+
+            ctx.conn
+                .add_migration(
+                    &self.table,
+                    AppliedMigration {
+                        version: mig_version,
+                        name: mig.name.clone(),
+                        checksum: checksum.into(),
+                        execution_time: Duration::default(),
+                    },
+                )
+                .await?;
+
+            conn = ctx.conn;
 
             tracing::info!(
                 version = idx + 1,
@@ -693,7 +694,7 @@ where
         }
 
         tracing::info!("committing changes");
-        tx.into_inner().commit().await?;
+        conn.execute("COMMIT").await?;
 
         Ok(MigrationSummary {
             old_version: if db_migrations.is_empty() {
@@ -718,13 +719,14 @@ where
     /// name or checksum does not match the applied migration's.
     ///
     /// Both name and checksum validation can be turned off via [`MigratorOptions`].
-    pub async fn verify(&mut self) -> Result<(), Error> {
+    #[allow(clippy::missing_panics_doc)]
+    pub async fn verify(mut self) -> Result<(), Error> {
         self.conn.ensure_migrations_table(&self.table).await?;
         let migrations = self.conn.list_migrations(&self.table).await?;
         self.check_migrations(&migrations)?;
 
         if self.options.verify_checksums {
-            for res in self.verify_checksums(&migrations).await? {
+            for res in self.verify_checksums(&migrations).await?.1 {
                 res?;
             }
         }
@@ -738,21 +740,18 @@ where
     ///
     /// Errors are returned on connection and database errors.
     /// The migrations themselves are not verified.
-    pub async fn status(&mut self) -> Result<Vec<MigrationStatus>, Error> {
+    #[allow(clippy::missing_panics_doc)]
+    pub async fn status(mut self) -> Result<Vec<MigrationStatus>, Error> {
         self.conn.ensure_migrations_table(&self.table).await?;
 
         let migrations = self.conn.list_migrations(&self.table).await?;
 
         let mut status = Vec::with_capacity(self.migrations.len());
 
-        let checksums = self.verify_checksums(&migrations).await?;
+        let (migrator, checksums) = self.verify_checksums(&migrations).await?;
+        self = migrator;
 
-        for (idx, pair) in self
-            .migrations
-            .iter()
-            .zip_longest(migrations.into_iter())
-            .enumerate()
-        {
+        for (idx, pair) in self.migrations.iter().zip_longest(migrations).enumerate() {
             let version = idx as u64 + 1;
 
             match pair {
@@ -787,12 +786,13 @@ where
     }
 }
 
-impl<DB> Migrator<DB>
+impl<Db> Migrator<Db>
 where
-    DB: Database,
-    DB::Connection: db::Migrations,
+    Db: Database,
+    Db::Connection: db::Migrations,
+    for<'a> &'a mut Db::Connection: Executor<'a>,
 {
-    fn local_migration(&self, version: u64) -> Result<&Migration<DB>, Error> {
+    fn local_migration(&self, version: u64) -> Result<&Migration<Db>, Error> {
         if version == 0 {
             return Err(Error::InvalidVersion {
                 version,
@@ -846,34 +846,37 @@ where
     }
 
     async fn verify_checksums(
-        &mut self,
+        mut self,
         migrations: &[AppliedMigration<'_>],
-    ) -> Result<Vec<Result<(), Error>>, Error> {
+    ) -> Result<(Self, Vec<Result<(), Error>>), Error> {
         let mut results = Vec::with_capacity(self.migrations.len());
 
         let local_migrations = self.migrations.iter();
 
-        let tx = UnsafeCell::new(self.conn.begin().await?);
+        let mut conn = self.conn;
 
         for (idx, mig) in local_migrations.enumerate() {
             let mig_version = idx as u64 + 1;
 
-            let hasher = UnsafeCell::new(Sha256::new());
+            let hasher = Sha256::new();
 
-            let ctx = MigrationContext {
+            let mut ctx = MigrationContext {
                 hash_only: true,
-                ext: self.extensions.get(),
-                hasher: hasher.get(),
-                tx: tx.get(),
+                ext: self.extensions.clone(),
+                hasher,
+                conn,
             };
 
-            (*mig.up)(ctx).await.map_err(|error| Error::Migration {
-                name: mig.name.clone(),
-                version: mig_version,
-                error,
-            })?;
+            (*mig.up)(&mut ctx)
+                .await
+                .map_err(|error| Error::Migration {
+                    name: mig.name.clone(),
+                    version: mig_version,
+                    error,
+                })?;
 
-            let checksum = hasher.into_inner().finalize().to_vec();
+            let checksum = std::mem::take(&mut ctx.hasher).finalize().to_vec();
+            conn = ctx.conn;
 
             if let Some(db_mig) = migrations.get(idx) {
                 if db_mig.checksum == checksum {
@@ -888,9 +891,10 @@ where
             }
         }
 
-        tx.into_inner().rollback().await?;
+        conn.execute("ROLLBACK").await?;
+        self.conn = conn;
 
-        Ok(results)
+        Ok((self, results))
     }
 }
 
@@ -945,6 +949,7 @@ pub struct MigrationStatus {
 pub type MigrationError = anyhow::Error;
 
 /// An `SQLx` database type, used for code generation purposes.
+#[cfg_attr(feature = "cli", derive(clap::ValueEnum))]
 #[derive(Debug, Clone, Copy)]
 #[non_exhaustive]
 pub enum DatabaseType {
