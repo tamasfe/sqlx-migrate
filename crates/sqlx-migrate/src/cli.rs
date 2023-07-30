@@ -310,14 +310,14 @@ fn add(
         if let Err(error) = fs::write(
             migrations_path.join(&up_filename),
             format!(
-                r#"use sqlx::{{{sqlx_type}}};
+                r#"use sqlx::{sqlx_type};
 use sqlx_migrate::prelude::*;
 
 /// Executes migration `{name}` in the given migration context.
 //
 // Do not modify the function name.
 // Do not modify the signature with the exception of the SQLx database type.
-pub async fn {name}(mut ctx: MigrationContext<'_, {sqlx_type}>) -> Result<(), MigrationError> {{
+pub async fn {name}(ctx: &mut MigrationContext<{sqlx_type}>) -> Result<(), MigrationError> {{
     // write your migration operations here
     todo!()
 }}
@@ -334,14 +334,14 @@ pub async fn {name}(mut ctx: MigrationContext<'_, {sqlx_type}>) -> Result<(), Mi
             if let Err(error) = fs::write(
                 migrations_path.join(&down_filename),
                 format!(
-                    r#"use sqlx::{{{sqlx_type}}};
+                    r#"use sqlx::{sqlx_type};
 use sqlx_migrate::prelude::*;
 
 /// Reverts migration `{name}` in the given migration context.
 //
 // Do not modify the function name.
 // Do not modify the signature with the exception of the SQLx database type.
-pub async fn revert_{name}(mut ctx: MigrationContext<'_, {sqlx_type}>) -> Result<(), MigrationError> {{
+pub async fn revert_{name}(ctx: &mut MigrationContext<{sqlx_type}>) -> Result<(), MigrationError> {{
     // write your revert operations here
     todo!()
 }}

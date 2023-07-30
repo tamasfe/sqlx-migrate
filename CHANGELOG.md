@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.7.1
+
+### Fixes
+
+- Use the correct signature for new migrations.
+
 ## 0.7.0
 
 ### Features
