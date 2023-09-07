@@ -11,7 +11,14 @@ use comfy_table::{Cell, CellAlignment, ContentArrangement, Table};
 use filetime::FileTime;
 use regex::Regex;
 use sqlx::{ConnectOptions, Database, Executor};
-use std::{fs, io, path::Path, process, str::FromStr, time::Duration};
+use std::{
+    fs,
+    io::{self, stdout, IsTerminal},
+    path::Path,
+    process,
+    str::FromStr,
+    time::Duration,
+};
 use time::{format_description, OffsetDateTime};
 use tracing_subscriber::{
     fmt::format::FmtSpan, prelude::__tracing_subscriber_SubscriberExt, util::SubscriberInitExt,
@@ -724,5 +731,5 @@ fn colors(matches: &Migrate) -> bool {
         return false;
     }
 
-    atty::is(atty::Stream::Stdout)
+    stdout().is_terminal()
 }

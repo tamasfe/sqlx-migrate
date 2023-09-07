@@ -35,7 +35,6 @@ clap = { version = "4.3.0", features = ["derive"], optional = true }
 tracing-subscriber = { version = "0.3.3", features = [
     "env-filter",
 ], optional = true }
-atty = { version = "0.2.14", optional = true }
 tokio = { version = "1.14.0", features = ["rt"], optional = true }
 comfy-table = { version = "7.0.1", optional = true }
 time = { version = "0.3", optional = true, features = ["formatting"] }
@@ -63,7 +62,6 @@ cli = [
     "dep:time",
     "dep:clap",
     "dep:tracing-subscriber",
-    "dep:atty",
     "dep:tokio",
     "dep:comfy-table",
     "dep:regex",
