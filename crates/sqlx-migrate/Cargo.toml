@@ -71,7 +71,7 @@ cli = [
     "dep:dotenvy",
 ]
 
-sqlite = ["sqlx/sqlite"]
+sqlite = ["sqlx/sqlite", "dep:time"]
 postgres = ["sqlx/postgres"]
 
 # Used for documentation generation purposes only.
